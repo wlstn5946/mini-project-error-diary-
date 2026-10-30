@@ -1,0 +1,77 @@
+/* 색·간격은 문서에 수치가 없어 시안(에러해결창_예시.png, 내기록창_예시.png)에 가깝게 맞춘 값이다. */
+:root {
+  --text: #1f2328;
+  --text-sub: #4b5563;
+  --bg: #fff;
+  --sidebar-bg: #f6f7f9;
+  --border: #e5e7eb;
+  --accent: #f04848;
+  --accent-text: #fff;
+
+  font-family: system-ui, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  font-size: 16px;
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+}
+
+.layout {
+  display: flex;
+  min-height: 100svh;
+}
+
+.sidebar {
+  width: 180px;
+  flex-shrink: 0;
+  padding: 24px 12px;
+  box-sizing: border-box;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+}
+
+.app-name {
+  padding: 0 4px;
+  margin-bottom: 20px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.menu-item {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 6px;
+  color: var(--text-sub);
+  text-decoration: none;
+}
+
+.menu-item:hover {
+  background: var(--border);
+}
+
+.menu-item.active {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+}
+
+.content {
+  flex: 1;
+  padding: 24px 28px;
+}
+
+.page-title {
+  margin: 0 0 16px;
+  /* 맑은 고딕 Bold는 22px에서 "록"처럼 획이 많은 글자의 획이 뭉쳐 보여 24px로 키웠다 */
+  font-size: 24px;
+  font-weight: 700;
+}

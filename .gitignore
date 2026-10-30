@@ -1,0 +1,12 @@
+# 환경 변수 (API 키)
+.env
+
+# 파이썬 가상환경·캐시
+.venv/
+venv/
+__pycache__/
+
+# SQLite 파일
+*.db
+*.sqlite
+*.sqlite3
