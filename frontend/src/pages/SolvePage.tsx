@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import SeriesSelect, { type SeriesChoice } from '../features/records/SeriesSelect'
 
-// S-001 에러 해결 (R-001 ~ R-004). 이번 범위: 탭 2개(에러 입력 / AI 분석)와 AI 분석(A-005)만.
+// S-001 에러 해결 (R-001 ~ R-004). 이번 범위: 탭 2개(에러 입력 / AI 분석), AI 분석(A-005), 시리즈 선택(팀원 1).
 // 유사 기록 검색, 시도 기록, 해결 처리는 아직 없다.
 
 type Tab = 'input' | 'analysis'
@@ -24,6 +25,8 @@ function SolvePage() {
   const [analyzed, setAnalyzed] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<Suggestion | null>(null)
+  // 고른 시리즈. 에러 저장(A-002)이 생기면 읽어서 함께 보낸다. null이면 새 시리즈 이름이 비었거나 중복이다.
+  const [, setSeriesChoice] = useState<SeriesChoice | null>({ kind: 'none' })
 
   async function findSolution() {
     const message = errorMessage.trim()
@@ -76,6 +79,11 @@ function SolvePage() {
           {loading && <span className="tab-badge">분석 중…</span>}
           {!loading && result && <span className="tab-badge done">완료</span>}
         </button>
+      </div>
+
+      {/* 탭을 바꿔도 선택이 남도록 언마운트하지 않고 숨긴다. 시안 ①처럼 에러 메시지 위에 둔다. */}
+      <div hidden={tab !== 'input'}>
+        <SeriesSelect onChange={setSeriesChoice} />
       </div>
 
       {tab === 'input' && (

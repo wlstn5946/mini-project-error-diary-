@@ -13,7 +13,7 @@
 | DECISIONS | 결정과 이유(D-) | docs/DECISIONS/DECISIONS_N.md |
 | SCREEN-SPEC | 화면 흐름, 예시 이미지, 화면 상태 | docs/SCREEN-SPEC/SCREEN-SPEC_N.md |
 | API-SPEC | 전체 구조, API 목록, 요청·응답 형식, 담당자 | docs/API-SPEC/API-SPEC_N.md |
-| DATA-MODEL | 테이블과 필드 규칙 | [결정 필요] |
+| DATA-MODEL | 테이블과 필드 규칙 | docs/DATA-MODEL/DATA-MODEL_N.md |
 | README | 실행 방법, 개발 환경, 소개 | [결정 필요] |
 | PROMPTS | AI 프롬프트, 응답 JSON 형식, 수정 이력 | [결정 필요] |
 | SCENARIO-REVIEW | 테스트 체크리스트, 데모 시나리오 | [결정 필요] |
@@ -46,9 +46,12 @@
 ## 5. 파일 담당
 | 담당 | 기능 영역 | 관련 R- | 파일 경로 |
 |------|-----------|---------|-----------|
-| 팀원 1 (찾기·정리) | 에러 등록, 기존 기록 검색, 내 기록 | R-001, R-002, R-005 | 백엔드: `backend/app/routers/records.py` / 프론트: [결정 필요] |
-| 팀원 2 (AI로 해결) | Gemini 연동, AI 제안, 시도 기록, 해결 처리, 에러 일기 상세 | R-003, R-004 | 백엔드: `backend/app/routers/solve.py` / 프론트: [결정 필요] |
-| 공용 | 공용 파일, 공통 컴포넌트 | - | 백엔드: `backend/app/main.py`, `backend/app/config.py`, `backend/app/routers/health.py`, `backend/requirements.txt`, `.gitignore` / 프론트: [결정 필요] |
+| 팀원 1 (찾기·정리) | 에러 등록, 기존 기록 검색, 내 기록 | R-001, R-002, R-005 | 백엔드: `backend/app/routers/records.py`, `backend/app/repositories/series.py` / 프론트: `frontend/src/features/records/` |
+| 팀원 2 (AI로 해결) | Gemini 연동, AI 제안, 시도 기록, 해결 처리, 에러 일기 상세 | R-003, R-004 | 백엔드: `backend/app/routers/solve.py` / 프론트: `frontend/src/features/solve/` |
+| 공용 | 공용 파일, 공통 컴포넌트 | - | 백엔드: `backend/app/main.py`, `backend/app/config.py`, `backend/app/db.py`, `backend/app/models.py`, `backend/app/routers/health.py`, `backend/requirements.txt`, `.gitignore` / 프론트: `frontend/src/components/`, `frontend/src/App.tsx`, `frontend/src/main.tsx`, `frontend/src/index.css`, `frontend/vite.config.ts` |
+
+- 프론트 폴더 구분은 D-012를 따른다.
+- SQL은 라우터에 쓰지 않고 `backend/app/repositories/<테이블>.py`에만 둔다. (D-016)
 
 - 작업 요청자의 담당 영역 밖 파일은 수정 전에 알린다.
 - 공용 파일은 두 사람이 함께 수정한다. 수정 시 완료 보고에 "공용 파일 수정"을 표시한다.
