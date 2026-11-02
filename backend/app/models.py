@@ -25,3 +25,16 @@ class Series(Base):
     name: Mapped[str] = mapped_column(String, unique=True)
     description: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[str] = mapped_column(String, default=now_kst)
+
+
+class Tag(Base):
+    """태그. 새 태그는 에러를 저장할 때 함께 만든다. (D-018, D-020)"""
+
+    __tablename__ = "tags"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # 처음 입력한 표기 그대로 보여준다 (예: Python)
+    name: Mapped[str] = mapped_column(String)
+    # 대소문자를 무시한 비교용 값 (예: python). COLLATE NOCASE 대신 써서 PostgreSQL에서도 같게 동작한다. (D-019)
+    name_key: Mapped[str] = mapped_column(String, unique=True)
+    created_at: Mapped[str] = mapped_column(String, default=now_kst)
