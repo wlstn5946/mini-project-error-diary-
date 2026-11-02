@@ -1,0 +1,94 @@
+/* 태그 입력 (시안 에러해결창_예시.png ① 태그 부분 참고) */
+.tag-input {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.tag-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.tag-box:focus-within {
+  border-color: #93a4f4;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.tag-chip-remove {
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tag-field {
+  flex: 1;
+  min-width: 160px;
+  padding: 4px;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+}
+
+.tag-suggestions {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  margin: 4px 0 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 8%);
+  list-style: none;
+}
+
+.tag-suggestion {
+  padding: 7px 12px;
+  cursor: pointer;
+}
+
+.tag-suggestion[aria-selected='true'],
+.tag-suggestion:hover {
+  background: var(--sidebar-bg);
+}
+
+.tag-input .hint {
+  margin: 6px 0 0;
+}
+
+.tag-error {
+  margin: 6px 0 0;
+  color: #b91c1c;
+  font-size: 14px;
+}
+
+.tag-retry {
+  margin-left: 8px;
+  padding: 2px 10px;
+  font-size: 13px;
+}

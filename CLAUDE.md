@@ -46,7 +46,7 @@
 ## 5. 파일 담당
 | 담당 | 기능 영역 | 관련 R- | 파일 경로 |
 |------|-----------|---------|-----------|
-| 팀원 1 (찾기·정리) | 에러 등록, 기존 기록 검색, 내 기록 | R-001, R-002, R-005 | 백엔드: `backend/app/routers/records.py`, `backend/app/repositories/series.py` / 프론트: `frontend/src/features/records/` |
+| 팀원 1 (찾기·정리) | 에러 등록, 기존 기록 검색, 내 기록 | R-001, R-002, R-005 | 백엔드: `backend/app/routers/records.py`, `backend/app/repositories/series.py`, `backend/app/repositories/tags.py` / 프론트: `frontend/src/features/records/` |
 | 팀원 2 (AI로 해결) | Gemini 연동, AI 제안, 시도 기록, 해결 처리, 에러 일기 상세 | R-003, R-004 | 백엔드: `backend/app/routers/solve.py` / 프론트: `frontend/src/features/solve/` |
 | 공용 | 공용 파일, 공통 컴포넌트 | - | 백엔드: `backend/app/main.py`, `backend/app/config.py`, `backend/app/db.py`, `backend/app/models.py`, `backend/app/routers/health.py`, `backend/requirements.txt`, `.gitignore` / 프론트: `frontend/src/components/`, `frontend/src/App.tsx`, `frontend/src/main.tsx`, `frontend/src/index.css`, `frontend/vite.config.ts` |
 
