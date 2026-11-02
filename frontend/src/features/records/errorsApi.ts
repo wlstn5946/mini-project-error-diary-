@@ -98,3 +98,31 @@ export async function getError(id: number, signal?: AbortSignal): Promise<ErrorD
   if (!res.ok) throw new Error(`GET /api/errors/${id} ${res.status}`)
   return (await res.json()) as ErrorDetail
 }
+
+// A-003 POST /api/errors/search 응답의 항목 (API-SPEC_5 6절). 해결된 기록만, 유사도 높은 순으로 온다.
+export type SimilarError = {
+  id: number
+  error_message: string
+  // 0~100 (%)
+  similarity: number
+  // 내 한 줄 정리 = 해결법
+  summary: string
+  attempt_count: number
+  tags: NamedItem[]
+  resolved_at: string
+}
+
+// 비슷한 기록을 찾지 못해도 화면이 멈추지 않게, 실패하면 예외 대신 null을 돌려준다. 호출하는 쪽은 바로 AI로 넘어간다.
+export async function searchSimilarErrors(errorMessage: string): Promise<SimilarError[] | null> {
+  try {
+    const res = await fetch('/api/errors/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error_message: errorMessage }),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as SimilarError[]
+  } catch {
+    return null
+  }
+}

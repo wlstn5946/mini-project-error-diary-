@@ -1,11 +1,12 @@
 """팀원 1 (찾기·정리): A-002, A-003, A-004, A-008, A-009 (API-SPEC 5절).
 
 경로는 /errors, /errors/search 처럼 전체 상대 경로로 적는다. prefix(/api)는 main.py에서 붙인다.
-이번 범위는 A-002(POST /errors), A-004(GET /series, GET /tags), A-008(GET /errors), A-009(GET /errors/{id})를 구현한다.
-A-003(/errors/search)을 만들 때는 A-009(/errors/{error_id})보다 위에 선언한다. 먼저 선언한 경로가 먼저 매칭되기 때문이다.
+이번 범위는 A-002(POST /errors), A-003(POST /errors/search), A-004(GET /series, GET /tags), A-008(GET /errors), A-009(GET /errors/{id})를 구현한다.
+A-003(/errors/search)은 A-009(/errors/{error_id})보다 위에 선언한다. 먼저 선언한 경로가 먼저 매칭되기 때문이다.
 SQL은 이 파일에 쓰지 않고 backend/app/repositories/에만 둔다. (D-016)
 """
 
+from difflib import SequenceMatcher
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -22,6 +23,7 @@ from app.repositories import tags as tags_repo
 router = APIRouter(tags=["records"])
 
 MAX_TAGS = 5  # D-022
+MIN_SIMILARITY = 60  # 유사도(%)가 이 값 이상인 기록만 비슷한 기록으로 본다. (D-040)
 
 
 class SeriesResponse(BaseModel):
@@ -85,6 +87,68 @@ class ErrorCreatedResponse(BaseModel):
 
 def _invalid(message: str) -> HTTPException:
     return HTTPException(status_code=422, detail=message)
+
+
+class SimilarSearchRequest(BaseModel):
+    # 상한은 A-002와 같다. 길어서 GET 쿼리 대신 POST 본문으로 받는다.
+    error_message: str = Field(max_length=10_000)
+
+
+class SimilarErrorResponse(BaseModel):
+    id: int
+    error_message: str
+    similarity: int
+    summary: str
+    attempt_count: int
+    tags: list[NamedItem]
+    resolved_at: str
+
+
+def _normalize_for_compare(text: str) -> str:
+    """공백 모양과 대소문자 차이는 비교하지 않는다."""
+    return " ".join(text.lower().split())
+
+
+def _similarity_percent(query: str, other: str) -> int | None:
+    """difflib 문자 유사도를 0~100%로 바꾼다(반올림). MIN_SIMILARITY 미만이면 None. (D-040)"""
+    matcher = SequenceMatcher(None, query, other)
+    # 값싼 상한부터 확인해서 어차피 못 미치는 기록은 정확한 계산을 건너뛴다.
+    if int(matcher.real_quick_ratio() * 100 + 0.5) < MIN_SIMILARITY or int(matcher.quick_ratio() * 100 + 0.5) < MIN_SIMILARITY:
+        return None
+    percent = int(matcher.ratio() * 100 + 0.5)
+    return percent if percent >= MIN_SIMILARITY else None
+
+
+# A-003 비슷한 기존 기록 검색 (R-002, D-040). 해결된 기록만, 유사도 높은 순. 저장하거나 바꾸지 않는다.
+@router.post("/errors/search", response_model=list[SimilarErrorResponse])
+def search_similar_errors(body: SimilarSearchRequest, db: Session = Depends(get_db)) -> list[SimilarErrorResponse]:
+    query = _normalize_for_compare(body.error_message)
+    if not query:
+        raise _invalid("에러 메시지를 입력해 주세요.")
+
+    matched: list[tuple[int, ErrorRecord]] = []
+    for error in errors_repo.list_resolved_errors(db):
+        percent = _similarity_percent(query, _normalize_for_compare(error.error_message))
+        if percent is not None:
+            matched.append((percent, error))
+    # 유사도 높은 순. 같으면 최근에 만든(id가 큰) 기록이 먼저다.
+    matched.sort(key=lambda item: (-item[0], -item[1].id))
+
+    error_ids = [error.id for _, error in matched]
+    tags_by_error = errors_repo.get_tags_by_error_ids(db, error_ids)
+    attempt_counts = attempts_repo.count_by_error_ids(db, error_ids)
+    return [
+        SimilarErrorResponse(
+            id=error.id,
+            error_message=error.error_message,
+            similarity=percent,
+            summary=error.summary or "",
+            attempt_count=attempt_counts.get(error.id, 0),
+            tags=[NamedItem.model_validate(tag) for tag in tags_by_error.get(error.id, [])],
+            resolved_at=error.resolved_at or error.created_at,
+        )
+        for percent, error in matched
+    ]
 
 
 def _resolve_tags(db: Session, tag_ids: list[int], new_tag_names: list[str]) -> tuple[list[Tag], list[str]]:
