@@ -11,6 +11,8 @@ type Props = {
   onStatusChange: (status: ErrorStatus | null) => void
   tagIds: number[]
   onToggleTag: (tagId: number) => void
+  // 값이 바뀌면 태그 목록을 다시 불러온다 (관리 모달에서 태그를 바꾼 뒤)
+  reloadSignal?: number
 }
 
 type TagStatus = 'loading' | 'ready' | 'error'
@@ -21,7 +23,15 @@ const STATUS_CHIPS: { value: ErrorStatus | null; label: string }[] = [
   { value: 'resolved', label: '해결만' },
 ]
 
-function RecordFilters({ searchText, onSearchTextChange, status, onStatusChange, tagIds, onToggleTag }: Props) {
+function RecordFilters({
+  searchText,
+  onSearchTextChange,
+  status,
+  onStatusChange,
+  tagIds,
+  onToggleTag,
+  reloadSignal = 0,
+}: Props) {
   const [tagStatus, setTagStatus] = useState<TagStatus>('loading')
   const [tags, setTags] = useState<Tag[]>([])
   const [reloadKey, setReloadKey] = useState(0)
@@ -38,7 +48,7 @@ function RecordFilters({ searchText, onSearchTextChange, status, onStatusChange,
         if (!controller.signal.aborted) setTagStatus('error')
       })
     return () => controller.abort()
-  }, [reloadKey])
+  }, [reloadKey, reloadSignal])
 
   function reloadTags() {
     setTagStatus('loading')

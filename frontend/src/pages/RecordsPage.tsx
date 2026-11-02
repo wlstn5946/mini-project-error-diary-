@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 import { listErrors, type ErrorFilters, type ErrorListItem, type ErrorStatus } from '../features/records/errorsApi'
+import ManageModal, { type ManageResult } from '../features/records/ManageModal'
 import RecordFilters from '../features/records/RecordFilters'
 import RecordList from '../features/records/RecordList'
 import '../features/records/records.css'
 
-// S-002 내 기록 (R-005, D-035, SCREEN-SPEC_5). 담당 팀원 1 (D-039).
+// S-002 내 기록 (R-005, D-035, SCREEN-SPEC_6). 담당 팀원 1 (D-039).
 // 필터 값은 URL 쿼리(?status=…&tag_id=…&q=…)에 둔다. 상세에 갔다가 뒤로 와도 필터가 남는다 (D-036).
+// "⚙ 관리"로 태그·시리즈 이름 변경·삭제 모달을 연다 (D-042).
 
 // 검색은 입력이 멈추고 잠시 뒤에 요청한다
 const SEARCH_DELAY_MS = 300
@@ -34,6 +36,9 @@ function RecordsPage() {
   const [searchText, setSearchText] = useState(filters.q)
   const [reloadKey, setReloadKey] = useState(0)
   const [result, setResult] = useState<ListResult | null>(null)
+  const [managing, setManaging] = useState(false)
+  // 관리 모달에서 바뀐 게 있으면 올려서 태그 칩을 다시 불러온다
+  const [tagsVersion, setTagsVersion] = useState(0)
 
   const key = JSON.stringify([filters, reloadKey])
   const loading = result?.key !== key
@@ -107,9 +112,30 @@ function RecordsPage() {
     })
   }
 
+  function closeManage({ changed, deletedTagIds }: ManageResult) {
+    setManaging(false)
+    if (!changed) return
+    // 태그 이름·시리즈 이름·소속이 바뀌었을 수 있어서 목록과 태그 칩을 다시 불러온다
+    setReloadKey((k) => k + 1)
+    setTagsVersion((v) => v + 1)
+    // 지운 태그가 필터에 걸려 있으면 필터에서 뺀다 (없는 태그로 거르면 항상 빈 결과라서)
+    if (deletedTagIds.some((id) => filters.tagIds.includes(id))) {
+      const remaining = filters.tagIds.filter((id) => !deletedTagIds.includes(id))
+      updateParams((next) => {
+        next.delete('tag_id')
+        for (const id of remaining) next.append('tag_id', String(id))
+      })
+    }
+  }
+
   return (
     <>
-      <h1 className="page-title">내 기록</h1>
+      <div className="records-header">
+        <h1 className="page-title">내 기록</h1>
+        <button type="button" className="btn-secondary" onClick={() => setManaging(true)}>
+          ⚙ 관리
+        </button>
+      </div>
 
       <RecordFilters
         searchText={searchText}
@@ -118,6 +144,7 @@ function RecordsPage() {
         onStatusChange={changeStatus}
         tagIds={filters.tagIds}
         onToggleTag={toggleTag}
+        reloadSignal={tagsVersion}
       />
 
       <div aria-live="polite">
@@ -150,6 +177,8 @@ function RecordsPage() {
           <RecordList items={result.items} backTo={location.pathname + location.search} />
         )}
       </div>
+
+      {managing && <ManageModal onClose={closeManage} />}
     </>
   )
 }

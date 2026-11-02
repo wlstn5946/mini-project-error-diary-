@@ -249,3 +249,184 @@
   border-left: 4px solid #22c55e;
   background: #f0fdf4;
 }
+
+/* 상세의 버튼 영역과 삭제 확인 창 */
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.btn-danger {
+  padding: 6px 14px;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  background: var(--bg);
+  color: #b91c1c;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background: #fef2f2;
+}
+
+.confirm-dialog {
+  max-width: 420px;
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+}
+
+.confirm-dialog::backdrop {
+  background: rgb(0 0 0 / 35%);
+}
+
+.confirm-title {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.confirm-text {
+  margin: 0 0 12px;
+  color: var(--text-sub);
+  line-height: 1.6;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* 내 기록 제목 줄과 "⚙ 관리" 모달 */
+.records-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.manage-dialog {
+  width: min(640px, 92vw);
+  max-height: 85vh;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+}
+
+.manage-dialog::backdrop {
+  background: rgb(0 0 0 / 35%);
+}
+
+.manage-body {
+  box-sizing: border-box;
+  max-height: 85vh;
+  padding: 20px 22px;
+  overflow-y: auto;
+}
+
+.manage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.manage-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.manage-close {
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--text-sub);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.manage-section {
+  margin: 18px 0 8px;
+  font-size: 15px;
+}
+
+.manage-notice {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 14px;
+}
+
+.manage-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.manage-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.manage-name {
+  display: flex;
+  flex: 1;
+  min-width: 120px;
+  flex-direction: column;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.manage-desc {
+  color: var(--text-sub);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.manage-count {
+  color: var(--text-sub);
+  font-size: 13px;
+}
+
+.manage-btn {
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.manage-edit {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.manage-input {
+  flex: 1;
+  min-width: 140px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.manage-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: #b91c1c;
+  font-size: 14px;
+}

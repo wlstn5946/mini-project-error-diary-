@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { RESULT_LABELS } from '../solve/solveApi'
 import { STATUS_LABELS, type ErrorDetail as Detail } from './errorsApi'
 
@@ -5,6 +6,8 @@ import { STATUS_LABELS, type ErrorDetail as Detail } from './errorsApi'
 
 type Props = {
   detail: Detail
+  // 제목 줄 아래 버튼 영역(삭제, 이후 수정). 상태를 가진 쪽(페이지)이 채운다.
+  actions?: ReactNode
 }
 
 // 제목은 에러 메시지의 첫 줄 (목록과 같은 규칙)
@@ -18,7 +21,7 @@ function timeLabel(iso: string) {
   return `${m}월 ${d}일 ${iso.slice(11, 16)}`
 }
 
-function ErrorDetail({ detail }: Props) {
+function ErrorDetail({ detail, actions }: Props) {
   return (
     <article className="detail">
       <header className="detail-header">
@@ -34,6 +37,8 @@ function ErrorDetail({ detail }: Props) {
           </span>
         ))}
       </p>
+
+      {actions && <div className="detail-actions">{actions}</div>}
 
       <pre className="code-view">{detail.error_message}</pre>
 

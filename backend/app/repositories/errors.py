@@ -5,10 +5,11 @@ mark_resolved()는 팀원 2가 해결 처리(A-006)용으로 추가했다. (D-03
 
 from typing import Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.models import ErrorRecord, ErrorTag, Tag, now_kst
+from app.repositories import attempts as attempts_repo
 
 
 def get_error(db: Session, error_id: int) -> ErrorRecord | None:
@@ -84,3 +85,43 @@ def mark_resolved(db: Session, error: ErrorRecord, summary: str) -> None:
     error.summary = summary
     error.resolved_at = now_kst()
     db.flush()
+
+
+def delete_error(db: Session, error: ErrorRecord) -> None:
+    """기록을 지운다 (D-043). 외래 키 때문에 attempts → error_tags → errors 순서로 지운다. CASCADE는 쓰지 않는다. (D-044)
+
+    쓰이지 않게 된 태그·시리즈는 남긴다. (D-046) 커밋은 호출하는 쪽에서 한다. 중간에 실패하면 커밋 전이라 아무것도 지워지지 않는다.
+    """
+    attempts_repo.delete_by_error_id(db, error.id)
+    db.execute(delete(ErrorTag).where(ErrorTag.error_id == error.id))
+    db.delete(error)
+    db.flush()
+
+
+def count_errors_by_series(db: Session) -> dict[int, int]:
+    """시리즈마다 속한 에러 수. 에러가 없는 시리즈는 키가 없다(0으로 본다). 시리즈 목록의 "에러 N개"에 쓴다. (D-050)"""
+    query = (
+        select(ErrorRecord.series_id, func.count())
+        .where(ErrorRecord.series_id.is_not(None))
+        .group_by(ErrorRecord.series_id)
+    )
+    return {series_id: count for series_id, count in db.execute(query)}
+
+
+def count_errors_by_tag(db: Session) -> dict[int, int]:
+    """태그마다 붙은 에러 수. 쓰이지 않는 태그는 키가 없다(0으로 본다). 삭제 확인 창의 "N개 기록에서 빠져요"에 쓴다. (D-050)"""
+    query = select(ErrorTag.tag_id, func.count()).group_by(ErrorTag.tag_id)
+    return {tag_id: count for tag_id, count in db.execute(query)}
+
+
+def clear_series(db: Session, series_id: int) -> None:
+    """시리즈를 지우기 전에 그 시리즈에 속한 에러의 소속을 비운다. 에러는 남는다. (D-050)
+
+    errors.series_order 컬럼이 생기면(D-051) 함께 비운다. 커밋은 호출하는 쪽에서 한다.
+    """
+    db.execute(update(ErrorRecord).where(ErrorRecord.series_id == series_id).values(series_id=None))
+
+
+def remove_tag_links(db: Session, tag_id: int) -> None:
+    """태그를 지우기 전에 그 태그의 에러 연결을 모두 지운다. 에러는 남는다. (D-050) 커밋은 호출하는 쪽에서 한다."""
+    db.execute(delete(ErrorTag).where(ErrorTag.tag_id == tag_id))

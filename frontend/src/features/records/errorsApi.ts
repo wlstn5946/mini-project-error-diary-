@@ -126,3 +126,20 @@ export async function searchSimilarErrors(errorMessage: string): Promise<Similar
     return null
   }
 }
+
+export type DeleteResult = 'deleted' | 'not-found'
+
+const DELETE_FAILED = '기록을 지우지 못했어요. 잠시 뒤 다시 시도해 주세요.'
+
+// A-011 DELETE /api/errors/{id}. 이미 지워진 기록(404)은 'not-found'로 돌려주고, 그 밖의 실패는 화면에 보여줄 문구를 담아 예외를 던진다.
+export async function deleteError(id: number): Promise<DeleteResult> {
+  let res: Response
+  try {
+    res = await fetch(`/api/errors/${id}`, { method: 'DELETE' })
+  } catch {
+    throw new Error(DELETE_FAILED)
+  }
+  if (res.status === 404) return 'not-found'
+  if (!res.ok) throw new Error(DELETE_FAILED)
+  return 'deleted'
+}
