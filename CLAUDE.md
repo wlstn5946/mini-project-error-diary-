@@ -46,13 +46,14 @@
 ## 5. 파일 담당
 | 담당 | 기능 영역 | 관련 R- | 파일 경로 |
 |------|-----------|---------|-----------|
-| 팀원 1 (찾기·정리) | 에러 등록, 기존 기록 검색, 내 기록, 에러 일기 상세 (D-031) | R-001, R-002, R-005 | 백엔드: `backend/app/routers/records.py`, `backend/app/repositories/series.py`, `backend/app/repositories/tags.py`, `backend/app/repositories/errors.py` / 프론트: `frontend/src/features/records/` |
+| 팀원 1 (찾기·정리) | 에러 등록, 기존 기록 검색, 내 기록, 에러 일기 상세 (D-031) | R-001, R-002, R-005 | 백엔드: `backend/app/routers/records.py`, `backend/app/repositories/series.py`, `backend/app/repositories/tags.py`, `backend/app/repositories/errors.py` / 프론트: `frontend/src/features/records/`, `frontend/src/pages/RecordsPage.tsx`, `frontend/src/pages/RecordDetailPage.tsx` |
 | 팀원 2 (AI로 해결) | Gemini 연동, AI 제안, 시도 기록, 해결 처리 | R-003, R-004 | 백엔드: `backend/app/routers/solve.py`, `backend/app/repositories/attempts.py` / 프론트: `frontend/src/features/solve/` |
-| 공용 | 공용 파일, 공통 컴포넌트 | - | 백엔드: `backend/app/main.py`, `backend/app/config.py`, `backend/app/db.py`, `backend/app/models.py`, `backend/app/routers/health.py`, `backend/requirements.txt`, `.gitignore` / 프론트: `frontend/src/components/`, `frontend/src/App.tsx`, `frontend/src/main.tsx`, `frontend/src/index.css`, `frontend/vite.config.ts` |
+| 공용 | 공용 파일, 공통 컴포넌트 | - | 백엔드: `backend/app/main.py`, `backend/app/config.py`, `backend/app/db.py`, `backend/app/models.py`, `backend/app/routers/health.py`, `backend/requirements.txt`, `.gitignore` / 프론트: `frontend/src/components/`, `frontend/src/App.tsx`, `frontend/src/main.tsx`, `frontend/src/index.css`, `frontend/vite.config.ts`, `frontend/src/pages/SolvePage.tsx`, `frontend/src/pages/NotFoundPage.tsx` |
 
-- 프론트 폴더 구분은 D-012를 따른다.
+- 프론트 폴더 구분은 D-012, `frontend/src/pages/`의 화면별 담당은 D-039를 따른다.
 - SQL은 라우터에 쓰지 않고 `backend/app/repositories/<테이블>.py`에만 둔다. (D-016)
 - 예외: 팀원 2는 해결 처리용 `mark_resolved()`만 `repositories/errors.py`에 추가한다. 추가하면 완료 보고에 표시한다. (D-030)
+- 예외: 팀원 1은 내 기록용 시도 읽기 함수(시도 횟수, 시도 목록)만 `repositories/attempts.py`에 추가한다. 추가하면 완료 보고에 표시한다. (D-038)
 
 - 작업 요청자의 담당 영역 밖 파일은 수정 전에 알린다.
 - 공용 파일은 두 사람이 함께 수정한다. 수정 시 완료 보고에 "공용 파일 수정"을 표시한다.
