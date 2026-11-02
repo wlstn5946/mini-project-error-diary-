@@ -3,14 +3,58 @@
 mark_resolved()는 팀원 2가 해결 처리(A-006)용으로 추가했다. (D-030)
 """
 
-from sqlalchemy import select
+from typing import Literal
+
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import ErrorRecord, ErrorTag, now_kst
+from app.models import ErrorRecord, ErrorTag, Tag, now_kst
 
 
 def get_error(db: Session, error_id: int) -> ErrorRecord | None:
     return db.get(ErrorRecord, error_id)
+
+
+def list_errors(
+    db: Session,
+    status: Literal["unresolved", "resolved"] | None,
+    tag_ids: list[int],
+    q: str | None,
+) -> list[ErrorRecord]:
+    """내 기록 목록 (A-008). 최근 등록 순, 같으면 id가 큰 것이 먼저. tag_ids는 중복 없이 넘긴다."""
+    query = select(ErrorRecord)
+    if status:
+        query = query.where(ErrorRecord.status == status)
+    if q:
+        # 대소문자 무시, 사용자가 입력한 %·_는 글자 그대로 찾는다
+        query = query.where(ErrorRecord.error_message.icontains(q, autoescape=True))
+    if tag_ids:
+        # 고른 태그를 모두 가진 에러만: 고른 태그 중 붙어 있는 개수가 고른 개수와 같아야 한다
+        has_all_tags = (
+            select(ErrorTag.error_id)
+            .where(ErrorTag.tag_id.in_(tag_ids))
+            .group_by(ErrorTag.error_id)
+            .having(func.count() == len(tag_ids))
+        )
+        query = query.where(ErrorRecord.id.in_(has_all_tags))
+    query = query.order_by(ErrorRecord.created_at.desc(), ErrorRecord.id.desc())
+    return list(db.scalars(query))
+
+
+def get_tags_by_error_ids(db: Session, error_ids: list[int]) -> dict[int, list[Tag]]:
+    """에러마다 붙은 태그(이름순). 목록 전체를 한 번에 가져온다 (N+1 조회 방지)."""
+    tags: dict[int, list[Tag]] = {error_id: [] for error_id in error_ids}
+    if not error_ids:
+        return tags
+    query = (
+        select(ErrorTag.error_id, Tag)
+        .join(Tag, Tag.id == ErrorTag.tag_id)
+        .where(ErrorTag.error_id.in_(error_ids))
+        .order_by(Tag.name_key, Tag.id)
+    )
+    for error_id, tag in db.execute(query):
+        tags[error_id].append(tag)
+    return tags
 
 
 def list_resolved_errors(db: Session) -> list[ErrorRecord]:

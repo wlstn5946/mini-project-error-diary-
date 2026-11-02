@@ -5,7 +5,7 @@ import re
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ErrorTag, Tag
+from app.models import Tag
 
 
 def normalize_tag_name(raw: str) -> str:
@@ -28,22 +28,6 @@ def get_tags_by_ids(db: Session, tag_ids: list[int]) -> list[Tag]:
     if not tag_ids:
         return []
     return list(db.scalars(select(Tag).where(Tag.id.in_(tag_ids))))
-
-
-def list_tags_by_error_ids(db: Session, error_ids: list[int]) -> dict[int, list[Tag]]:
-    """에러마다 붙은 태그. 태그는 id순이다."""
-    if not error_ids:
-        return {}
-    query = (
-        select(ErrorTag.error_id, Tag)
-        .join(Tag, Tag.id == ErrorTag.tag_id)
-        .where(ErrorTag.error_id.in_(error_ids))
-        .order_by(Tag.id)
-    )
-    result: dict[int, list[Tag]] = {}
-    for error_id, tag in db.execute(query):
-        result.setdefault(error_id, []).append(tag)
-    return result
 
 
 def get_tags_by_keys(db: Session, keys: list[str]) -> dict[str, Tag]:

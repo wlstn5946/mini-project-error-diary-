@@ -16,6 +16,13 @@ def get_series(db: Session, series_id: int) -> Series | None:
     return db.get(Series, series_id)
 
 
+def get_series_by_ids(db: Session, series_ids: set[int]) -> dict[int, Series]:
+    """내 기록 목록용. 여러 에러의 시리즈를 한 번에 가져온다 (N+1 조회 방지)."""
+    if not series_ids:
+        return {}
+    return {series.id: series for series in db.scalars(select(Series).where(Series.id.in_(series_ids)))}
+
+
 def find_series_by_name(db: Session, name: str) -> Series | None:
     """앞뒤 공백을 빼고 대소문자를 무시해 같은 이름의 시리즈를 찾는다. (D-017)"""
     key = name.strip().lower()
