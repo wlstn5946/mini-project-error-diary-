@@ -3,6 +3,7 @@
 mark_resolved()는 팀원 2가 해결 처리(A-006)용으로 추가했다. (D-030)
 """
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import ErrorRecord, ErrorTag, now_kst
@@ -10,6 +11,11 @@ from app.models import ErrorRecord, ErrorTag, now_kst
 
 def get_error(db: Session, error_id: int) -> ErrorRecord | None:
     return db.get(ErrorRecord, error_id)
+
+
+def list_resolved_errors(db: Session) -> list[ErrorRecord]:
+    """비슷한 기록 검색(A-003)의 후보. 한 줄 정리(해결법)가 있는 해결된 기록만 돌려준다. (D-035)"""
+    return list(db.scalars(select(ErrorRecord).where(ErrorRecord.status == "resolved")))
 
 
 def create_error(

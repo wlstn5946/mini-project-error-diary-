@@ -1,0 +1,131 @@
+/* 비슷한 기존 기록 (시안 에러해결창_예시.png ①). 색은 시안에 가깝게 맞춘 값이다. */
+.similar-box {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid #f3c88a;
+  border-radius: 10px;
+  background: #fff8ec;
+}
+
+.similar-heading {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: #b45309;
+}
+
+/* 카드 높이를 고정해서 위 두 개가 정확히 보이고 나머지는 스크롤로 내려 본다 */
+.similar-list {
+  --card-height: 178px;
+  --card-gap: 10px;
+  display: grid;
+  grid-auto-rows: var(--card-height);
+  gap: var(--card-gap);
+  max-height: calc(var(--card-height) * 2 + var(--card-gap));
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.similar-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.similar-badges {
+  display: flex;
+  gap: 6px;
+}
+
+.similar-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.similar-badge.percent {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.similar-badge.resolved {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.similar-title {
+  margin: 0;
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.similar-meta {
+  margin: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--text-sub);
+  white-space: nowrap;
+}
+
+.similar-tag {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #e8edff;
+  color: #2b3fb8;
+}
+
+.similar-solution {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.btn-apply {
+  align-self: flex-start;
+  margin-top: auto;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 6px;
+  background: #15803d;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.similar-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.btn-ask-ai {
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 6px;
+  background: #2b3fb8;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-apply:disabled,
+.btn-ask-ai:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
