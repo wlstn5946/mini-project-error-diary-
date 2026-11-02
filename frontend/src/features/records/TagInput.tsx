@@ -14,6 +14,8 @@ export type TagsValue = {
 
 type Props = {
   onChange: (value: TagsValue) => void
+  // 에러가 저장된 뒤에는 고칠 수 없게 잠근다 (D-034)
+  disabled?: boolean
 }
 
 type Status = 'loading' | 'ready' | 'error'
@@ -34,7 +36,7 @@ function tagKey(name: string) {
   return normalizeTag(name).toLowerCase()
 }
 
-function TagInput({ onChange }: Props) {
+function TagInput({ onChange, disabled = false }: Props) {
   const [status, setStatus] = useState<Status>('loading')
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [reloadKey, setReloadKey] = useState(0)
@@ -60,7 +62,7 @@ function TagInput({ onChange }: Props) {
 
   const key = tagKey(text)
   const chosenKeys = new Set(chips.map((c) => tagKey(c.name)))
-  const suggestions = key
+  const suggestions = key && !disabled
     ? allTags.filter((t) => tagKey(t.name).includes(key) && !chosenKeys.has(tagKey(t.name))).slice(0, MAX_SUGGESTIONS)
     : []
 
@@ -134,14 +136,16 @@ function TagInput({ onChange }: Props) {
         {chips.map((chip, i) => (
           <span key={tagKey(chip.name)} className="tag-chip">
             {chip.name}
-            <button
-              type="button"
-              className="tag-chip-remove"
-              aria-label={`${chip.name} 태그 삭제`}
-              onClick={() => removeAt(i)}
-            >
-              ×
-            </button>
+            {!disabled && (
+              <button
+                type="button"
+                className="tag-chip-remove"
+                aria-label={`${chip.name} 태그 삭제`}
+                onClick={() => removeAt(i)}
+              >
+                ×
+              </button>
+            )}
           </span>
         ))}
         <input
@@ -155,6 +159,7 @@ function TagInput({ onChange }: Props) {
           aria-activedescendant={active >= 0 ? `tag-suggestion-${active}` : undefined}
           aria-describedby="tag-message"
           value={text}
+          disabled={disabled}
           onChange={(e) => {
             setText(e.target.value)
             setActive(-1)
@@ -183,7 +188,8 @@ function TagInput({ onChange }: Props) {
         </ul>
       )}
 
-      <div id="tag-message" aria-live="polite">
+      {/* 잠긴 뒤에는 입력 안내가 필요 없다 */}
+      <div id="tag-message" aria-live="polite" hidden={disabled}>
         {notice && <p className={notice.error ? 'tag-error' : 'hint'}>{notice.text}</p>}
         {!notice && status === 'error' && (
           <p className="tag-error">
