@@ -1,56 +1,138 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { createError, type SavedError } from '../features/records/errorsApi'
 import SeriesSelect, { type SeriesChoice } from '../features/records/SeriesSelect'
 import TagInput, { type TagsValue } from '../features/records/TagInput'
+import AiSuggestionCard from '../features/solve/AiSuggestionCard'
+import AttemptForm from '../features/solve/AttemptForm'
+import ResolvedSummary from '../features/solve/ResolvedSummary'
+import {
+  AttemptSaveError,
+  createAttempt,
+  requestSuggestion,
+  RESULT_LABELS,
+  type AttemptBody,
+  type AttemptResult,
+  type PreviousAttempt,
+  type Suggestion,
+} from '../features/solve/solveApi'
+import '../features/solve/solve.css'
 
-// S-001 에러 해결 (R-001 ~ R-004). 이번 범위: 탭 2개(에러 입력 / AI 분석), AI 분석(A-005), 시리즈 선택·태그 입력(팀원 1).
-// 유사 기록 검색, 시도 기록, 해결 처리는 아직 없다.
+// S-001 에러 해결 (R-001 ~ R-004, SCREEN-SPEC_4 화면 흐름).
+// 해결 방법 찾기 → A-002로 에러 저장(D-025) → A-005 AI 제안 → A-006 시도 기록
+// → 해결됨이면 해결 완료, 아니면 이전 시도를 붙여 A-005 다시 (D-027)
+// 비슷한 기존 기록 검색(A-003)은 아직 없어서 항상 0건으로 보고 바로 AI로 간다.
 
 type Tab = 'input' | 'analysis'
-type Confidence = '높음' | '보통' | '낮음'
+type SavedAttempt = { seq: number; action: string; result: AttemptResult }
 
-// A-005 응답 (API-SPEC_2 6절)
-type Suggestion = {
-  status: 'ok' | 'unavailable'
-  confidence: Confidence | null
-  cause: string | null
-  solutions: string[]
-  message: string | null
-}
-
-const UNAVAILABLE = '지금은 AI 분석을 가져오지 못했어요. 잠시 뒤 다시 시도해 주세요.'
+const EMPTY_TAGS: TagsValue = { existingIds: [], newNames: [] }
 
 function SolvePage() {
   const [tab, setTab] = useState<Tab>('input')
+  // 바뀌면 시리즈·태그 컴포넌트를 새로 만들어 입력을 비운다 ("새 에러 입력")
+  const [formKey, setFormKey] = useState(0)
   const [errorMessage, setErrorMessage] = useState('')
-  // 분석에 쓴 에러 메시지. 입력창을 고쳐도 탭 2에는 분석한 원문을 보여준다.
-  const [analyzed, setAnalyzed] = useState('')
+  const [situation, setSituation] = useState('')
+  // null이면 새 시리즈 이름이 비었거나 중복이다
+  const [seriesChoice, setSeriesChoice] = useState<SeriesChoice | null>({ kind: 'none' })
+  const [tagsValue, setTagsValue] = useState<TagsValue>(EMPTY_TAGS)
+  // A-002로 저장된 에러. 저장된 뒤에는 입력을 잠근다 (D-034)
+  const [saved, setSaved] = useState<SavedError | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<Suggestion | null>(null)
-  // 고른 시리즈. 에러 저장(A-002)이 생기면 읽어서 함께 보낸다. null이면 새 시리즈 이름이 비었거나 중복이다.
-  const [, setSeriesChoice] = useState<SeriesChoice | null>({ kind: 'none' })
-  // 고른 태그. 에러 저장(A-002) 때 기존 태그 ID와 새 태그 이름으로 함께 보낸다.
-  const [, setTagsValue] = useState<TagsValue>({ existingIds: [], newNames: [] })
+  const [attempts, setAttempts] = useState<SavedAttempt[]>([])
+  const [attemptSaving, setAttemptSaving] = useState(false)
+  const [attemptError, setAttemptError] = useState<string | null>(null)
+  // 이미 해결된 에러라 더 기록할 수 없다 (A-006 409, D-032)
+  const [closed, setClosed] = useState(false)
+  const [resolvedSummary, setResolvedSummary] = useState<string | null>(null)
+  // 저장 버튼을 빠르게 두 번 눌러도 요청은 한 번만 보낸다
+  const busy = useRef(false)
+
+  const locked = saved !== null
+
+  async function askAi(message: string, history: SavedAttempt[]) {
+    setLoading(true)
+    setResult(null)
+    // 해결된 시도는 다음 방법을 묻지 않으므로 실패·일부 해결만 보낸다
+    const previous: PreviousAttempt[] = history.flatMap((a) =>
+      a.result === 'solved' ? [] : [{ action: a.action, result: a.result }],
+    )
+    // requestSuggestion은 실패해도 예외 없이 unavailable을 돌려준다
+    setResult(await requestSuggestion(message, previous))
+    setLoading(false)
+  }
 
   async function findSolution() {
     const message = errorMessage.trim()
-    if (!message || loading) return
-    setLoading(true)
-    setAnalyzed(message)
-    setResult(null)
+    if (!message || locked || seriesChoice === null || busy.current) return
+    busy.current = true
+    setSaving(true)
+    setSaveError(null)
+    let error: SavedError
     try {
-      const res = await fetch('/api/ai-suggestions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error_message: message }),
+      error = await createError({
+        error_message: message,
+        situation: situation.trim() || null,
+        series_id: seriesChoice.kind === 'existing' ? seriesChoice.series.id : null,
+        new_series_name: seriesChoice.kind === 'new' ? seriesChoice.name : null,
+        tag_ids: tagsValue.existingIds,
+        new_tag_names: tagsValue.newNames,
       })
-      if (!res.ok) throw new Error(String(res.status))
-      setResult((await res.json()) as Suggestion)
-    } catch {
-      // 서버 꺼짐·네트워크 오류여도 화면은 멈추지 않고 안내만 보여준다.
-      setResult({ status: 'unavailable', confidence: null, cause: null, solutions: [], message: UNAVAILABLE })
+    } catch (e) {
+      // 저장이 안 되면 AI로 넘어가지 않는다. 시도는 error_id가 있어야 저장되기 때문이다. 입력값은 그대로 둔다.
+      setSaveError(e instanceof Error ? e.message : String(e))
+      return
     } finally {
-      setLoading(false)
+      setSaving(false)
+      busy.current = false
     }
+    setSaved(error)
+    await askAi(error.error_message, [])
+  }
+
+  async function saveAttempt(body: AttemptBody) {
+    if (!saved || busy.current) return
+    busy.current = true
+    setAttemptSaving(true)
+    setAttemptError(null)
+    let res
+    try {
+      res = await createAttempt(saved.id, body)
+    } catch (e) {
+      if (e instanceof AttemptSaveError && e.status === 409 && e.message.includes('이미 해결')) setClosed(true)
+      setAttemptError(e instanceof Error ? e.message : String(e))
+      return
+    } finally {
+      setAttemptSaving(false)
+      busy.current = false
+    }
+    const history = [...attempts, { seq: res.attempt.seq, action: res.attempt.action, result: res.attempt.result }]
+    setAttempts(history)
+    if (res.error.status === 'resolved') {
+      setResolvedSummary(res.error.summary ?? '')
+      return
+    }
+    // 해결 안 됨·일부 해결: 실패 시도를 붙여 다음 방법을 묻는다 (D-027, D-029)
+    await askAi(saved.error_message, history)
+  }
+
+  function startNewError() {
+    setFormKey((k) => k + 1)
+    setTab('input')
+    setErrorMessage('')
+    setSituation('')
+    setSeriesChoice({ kind: 'none' })
+    setTagsValue(EMPTY_TAGS)
+    setSaved(null)
+    setSaveError(null)
+    setResult(null)
+    setAttempts([])
+    setAttemptError(null)
+    setClosed(false)
+    setResolvedSummary(null)
   }
 
   return (
@@ -85,9 +167,17 @@ function SolvePage() {
       </div>
 
       {/* 탭을 바꿔도 선택이 남도록 언마운트하지 않고 숨긴다. 시안 ①처럼 에러 메시지 위에 둔다. */}
-      <div hidden={tab !== 'input'}>
-        <SeriesSelect onChange={setSeriesChoice} />
-        <TagInput onChange={setTagsValue} />
+      <div hidden={tab !== 'input'} key={formKey}>
+        {locked && (
+          <p className="locked-notice">
+            저장된 에러예요. 내용을 바꾸려면 새 에러로 입력해 주세요.
+            <button type="button" className="btn-secondary" onClick={startNewError}>
+              새 에러 입력
+            </button>
+          </p>
+        )}
+        <SeriesSelect onChange={setSeriesChoice} disabled={locked} />
+        <TagInput onChange={setTagsValue} disabled={locked} />
       </div>
 
       {tab === 'input' && (
@@ -102,16 +192,32 @@ function SolvePage() {
             maxLength={10000}
             placeholder="에러 메시지나 Traceback을 붙여넣으세요"
             value={errorMessage}
+            readOnly={locked}
             onChange={(e) => setErrorMessage(e.target.value)}
           />
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={!errorMessage.trim() || loading}
-            onClick={findSolution}
-          >
-            {loading ? '분석 중…' : '해결 방법 찾기'}
-          </button>
+          <label className="field-label" htmlFor="situation">
+            상황 (선택)
+          </label>
+          <input
+            id="situation"
+            className="situation-input"
+            placeholder="예: 새로 만든 가상환경에서 처음 실행함"
+            value={situation}
+            disabled={locked}
+            onChange={(e) => setSituation(e.target.value)}
+          />
+          {!locked && (
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={!errorMessage.trim() || saving || seriesChoice === null}
+              onClick={findSolution}
+            >
+              {saving ? '저장 중…' : '해결 방법 찾기'}
+            </button>
+          )}
+          {!locked && seriesChoice === null && <p className="hint">시리즈 이름을 확인해 주세요.</p>}
+          {saveError && <p className="save-error">{saveError} 입력한 내용은 그대로 있어요.</p>}
           {(loading || result) && (
             <p className="hint">
               {loading ? 'AI가 분석하는 중이에요.' : '분석이 끝났어요.'} 결과는 위의 &quot;AI 분석&quot; 탭에서 볼 수 있어요.
@@ -122,35 +228,62 @@ function SolvePage() {
 
       {tab === 'analysis' && (
         <section role="tabpanel" id="panel-analysis" aria-labelledby="tab-analysis">
-          {!analyzed && <p className="empty">아직 분석한 에러가 없어요. &quot;에러 입력&quot; 탭에서 에러를 입력해 주세요.</p>}
+          {!saved && <p className="empty">아직 분석한 에러가 없어요. &quot;에러 입력&quot; 탭에서 에러를 입력해 주세요.</p>}
 
-          {analyzed && <pre className="code-view">{analyzed}</pre>}
+          {saved && <pre className="code-view">{saved.error_message}</pre>}
 
-          {loading && <p className="empty">✨ AI가 에러를 분석하는 중이에요…</p>}
-
-          {result?.status === 'ok' && (
-            <div className="ai-card">
-              <h2 className="ai-title">
-                ✨ AI 분석 · 확신도 <span className={`confidence c-${result.confidence}`}>{result.confidence}</span>
-              </h2>
-              <p className="ai-label">추정 원인</p>
-              <p className="ai-text">{result.cause}</p>
-              <p className="ai-label">해결 제안</p>
-              <ol className="ai-list">
-                {result.solutions.map((s, i) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ol>
-            </div>
+          {attempts.length > 0 && (
+            <ul className="attempt-history" aria-label="저장한 시도">
+              {attempts.map((a) => (
+                <li key={a.seq}>
+                  <span className={`attempt-badge ${a.result}`}>
+                    시도 {a.seq} · {RESULT_LABELS[a.result]}
+                  </span>
+                  {a.action}
+                </li>
+              ))}
+            </ul>
           )}
 
-          {result?.status === 'unavailable' && (
-            <div className="ai-card unavailable">
-              <p className="ai-text">{result.message ?? UNAVAILABLE}</p>
-              <button type="button" className="btn-secondary" onClick={findSolution} disabled={loading}>
-                다시 시도
-              </button>
-            </div>
+          {saved && resolvedSummary !== null && (
+            <ResolvedSummary
+              errorMessage={saved.error_message}
+              attemptCount={attempts.length}
+              tagNames={saved.tags.map((t) => t.name)}
+              seriesName={saved.series?.name ?? null}
+              summary={resolvedSummary}
+              onNewError={startNewError}
+            />
+          )}
+
+          {saved && resolvedSummary === null && (
+            <>
+              {loading && (
+                <p className="empty">
+                  {attempts.length ? '✨ AI가 다음 방법을 찾는 중이에요…' : '✨ AI가 에러를 분석하는 중이에요…'}
+                </p>
+              )}
+              {result?.status === 'unavailable' && attempts.length > 0 && (
+                <p className="attempt-notice">실패한 시도는 저장됐어요.</p>
+              )}
+              {result && (
+                <AiSuggestionCard result={result} retrying={loading} onRetry={() => askAi(saved.error_message, attempts)} />
+              )}
+              {closed ? (
+                <p className="attempt-error">{attemptError}</p>
+              ) : (
+                result &&
+                !loading && (
+                  <AttemptForm
+                    key={attempts.length + 1}
+                    seq={attempts.length + 1}
+                    saving={attemptSaving}
+                    error={attemptError}
+                    onSubmit={saveAttempt}
+                  />
+                )
+              )}
+            </>
           )}
         </section>
       )}

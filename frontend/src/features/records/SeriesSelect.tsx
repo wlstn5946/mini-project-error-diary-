@@ -13,6 +13,8 @@ export type SeriesChoice =
 type Props = {
   // null: 새 시리즈 이름이 비었거나 기존 이름과 겹쳐서 아직 쓸 수 없는 상태
   onChange: (choice: SeriesChoice | null) => void
+  // 에러가 저장된 뒤에는 고칠 수 없게 잠근다 (D-034)
+  disabled?: boolean
 }
 
 type Status = 'loading' | 'ready' | 'error'
@@ -23,7 +25,7 @@ function sameName(a: string, b: string) {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
 }
 
-function SeriesSelect({ onChange }: Props) {
+function SeriesSelect({ onChange, disabled = false }: Props) {
   const [status, setStatus] = useState<Status>('loading')
   const [seriesList, setSeriesList] = useState<Series[]>([])
   const [reloadKey, setReloadKey] = useState(0)
@@ -90,7 +92,7 @@ function SeriesSelect({ onChange }: Props) {
             id="series-select"
             className="series-control"
             value={selectedId}
-            disabled={status !== 'ready'}
+            disabled={disabled || status !== 'ready'}
             onChange={(e) => changeSelected(e.target.value)}
           >
             <option value="">{status === 'loading' ? '불러오는 중…' : '선택 안 함'}</option>
@@ -108,6 +110,7 @@ function SeriesSelect({ onChange }: Props) {
             value={newName}
             aria-invalid={Boolean(duplicate)}
             aria-describedby="series-message"
+            disabled={disabled}
             onChange={(e) => changeNewName(e.target.value)}
             autoFocus
           />
@@ -115,17 +118,23 @@ function SeriesSelect({ onChange }: Props) {
 
         {mode === 'select' ? (
           // 목록을 불러오는 중에는 중복 확인을 할 수 없어서 막아 둔다.
-          <button type="button" className="btn-secondary" disabled={status === 'loading'} onClick={() => switchMode('new')}>
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={disabled || status === 'loading'}
+            onClick={() => switchMode('new')}
+          >
             + 새 시리즈
           </button>
         ) : (
-          <button type="button" className="btn-secondary" onClick={() => switchMode('select')}>
+          <button type="button" className="btn-secondary" disabled={disabled} onClick={() => switchMode('select')}>
             취소
           </button>
         )}
       </div>
 
-      <div id="series-message" aria-live="polite">
+      {/* 잠긴 뒤에는 입력 안내가 필요 없다 */}
+      <div id="series-message" aria-live="polite" hidden={disabled}>
         {mode === 'select' && status === 'error' && (
           <p className="series-error">
             시리즈 목록을 불러오지 못했어요. 시리즈 없이 계속하거나 새로 만들 수 있어요.
