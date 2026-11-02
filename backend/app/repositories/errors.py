@@ -58,7 +58,7 @@ def get_tags_by_error_ids(db: Session, error_ids: list[int]) -> dict[int, list[T
 
 
 def list_resolved_errors(db: Session) -> list[ErrorRecord]:
-    """비슷한 기록 검색(A-003)의 후보. 한 줄 정리(해결법)가 있는 해결된 기록만 돌려준다. (D-035)"""
+    """비슷한 기록 검색(A-003)의 후보. 한 줄 정리(해결법)가 있는 해결된 기록만 돌려준다. (D-040)"""
     return list(db.scalars(select(ErrorRecord).where(ErrorRecord.status == "resolved")))
 
 

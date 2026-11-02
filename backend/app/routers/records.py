@@ -23,7 +23,7 @@ from app.repositories import tags as tags_repo
 router = APIRouter(tags=["records"])
 
 MAX_TAGS = 5  # D-022
-MIN_SIMILARITY = 60  # 유사도(%)가 이 값 이상인 기록만 비슷한 기록으로 본다. (D-035)
+MIN_SIMILARITY = 60  # 유사도(%)가 이 값 이상인 기록만 비슷한 기록으로 본다. (D-040)
 
 
 class SeriesResponse(BaseModel):
@@ -110,7 +110,7 @@ def _normalize_for_compare(text: str) -> str:
 
 
 def _similarity_percent(query: str, other: str) -> int | None:
-    """difflib 문자 유사도를 0~100%로 바꾼다(반올림). MIN_SIMILARITY 미만이면 None. (D-035)"""
+    """difflib 문자 유사도를 0~100%로 바꾼다(반올림). MIN_SIMILARITY 미만이면 None. (D-040)"""
     matcher = SequenceMatcher(None, query, other)
     # 값싼 상한부터 확인해서 어차피 못 미치는 기록은 정확한 계산을 건너뛴다.
     if int(matcher.real_quick_ratio() * 100 + 0.5) < MIN_SIMILARITY or int(matcher.quick_ratio() * 100 + 0.5) < MIN_SIMILARITY:
@@ -119,7 +119,7 @@ def _similarity_percent(query: str, other: str) -> int | None:
     return percent if percent >= MIN_SIMILARITY else None
 
 
-# A-003 비슷한 기존 기록 검색 (R-002, D-035). 해결된 기록만, 유사도 높은 순. 저장하거나 바꾸지 않는다.
+# A-003 비슷한 기존 기록 검색 (R-002, D-040). 해결된 기록만, 유사도 높은 순. 저장하거나 바꾸지 않는다.
 @router.post("/errors/search", response_model=list[SimilarErrorResponse])
 def search_similar_errors(body: SimilarSearchRequest, db: Session = Depends(get_db)) -> list[SimilarErrorResponse]:
     query = _normalize_for_compare(body.error_message)

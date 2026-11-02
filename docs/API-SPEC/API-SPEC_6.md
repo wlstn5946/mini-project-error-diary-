@@ -3,8 +3,8 @@
 ## 1. 문서 설명
 - 전체 구조, API 목록, 요청·응답 형식, 담당자를 담는 문서다. 기능 설명은 PRD에 있으므로 여기서는 R-ID로만 가리킨다.
 - **이번 버전(v6)의 범위는 v5에 "내 기록"(A-008 목록, A-009 상세)을 더한 것이다.**
-  - 상세를 적는 API: A-001, A-002, A-004(`GET /series`, `GET /tags`), A-005, A-006, A-008, A-009
-  - 나머지 기능 API(A-003, A-007): 목록에 "후보"로 자리만 잡는다
+  - 상세를 적는 API: A-001, A-002, A-003, A-004(`GET /series`, `GET /tags`), A-005, A-006, A-008, A-009
+  - 나머지 기능 API(A-007): 목록에 "후보"로 자리만 잡는다
 - 이번 버전에서 다루지 않는 것:
   - 기능 API의 요청·응답 필드 (Q-001 ~ Q-004, DATA-MODEL 결정 후)
   - 테이블 구조 (DATA-MODEL_N.md)
@@ -64,13 +64,13 @@ flowchart LR
 
 ## 5. API 목록
 
-경로는 prefix를 뺀 상대 경로다. **A-003, A-007은 후보이며 확정이 아니다.**
+경로는 prefix를 뺀 상대 경로다. **A-007은 후보이며 확정이 아니다.**
 
 | ID | 이름 | 메서드 | 경로 | 관련 R-ID | 담당 | 상태 |
 |----|------|--------|------|-----------|------|------|
 | A-001 | 연결 확인 | GET | `/health` (전체: `/api/health`) | - | 공용 | 구현됨 |
 | A-002 | 에러 등록 | POST | `/errors` | R-001 | 팀원 1 | 구현됨 (6절) |
-| A-003 | 기존 기록 검색 | GET 또는 POST | `/errors/search` | R-002 | 팀원 1 | 후보 (Q-002 결정 후 작성) |
+| A-003 | 기존 기록 검색 | POST | `/errors/search` (전체: `/api/errors/search`) | R-002 | 팀원 1 | 구현됨 (6절, D-040) |
 | A-004 | 태그·시리즈 목록 | GET | `/tags`, `/series` (전체: `/api/tags`, `/api/series`) | R-001 (PRD 6절 규칙) | 팀원 1 | `/series`, `/tags` 구현됨 |
 | A-005 | AI 해결책 제안 | POST | `/ai-suggestions` (전체: `/api/ai-suggestions`) | R-003 | 팀원 2 | 구현됨 (저장 없음, D-027, `previous_attempts` 포함) |
 | A-006 | 시도 기록 | POST | `/errors/{id}/attempts` (전체: `/api/errors/{id}/attempts`) | R-004 | 팀원 2 | 구현됨 (6절) |
@@ -89,7 +89,7 @@ flowchart LR
 | 담당 | 라우터 파일 | API |
 |------|-------------|-----|
 | 공용 | `backend/app/routers/health.py` | A-001 |
-| 팀원 1 | `backend/app/routers/records.py` | A-002(구현됨), A-003, A-004(`/series`, `/tags` 구현됨), A-008(구현됨), A-009(구현됨) |
+| 팀원 1 | `backend/app/routers/records.py` | A-002(구현됨), A-003(구현됨), A-004(`/series`, `/tags` 구현됨), A-008(구현됨), A-009(구현됨) |
 | 팀원 2 | `backend/app/routers/solve.py` | A-005(구현됨), A-006(구현됨), A-007 |
 
 - `main.py`는 `records`를 `solve`보다 먼저 등록한다. 고정 경로(`/errors/search`)가 변수 경로(`/errors/{id}`)보다 먼저 매칭되게 하기 위해서다.
@@ -161,6 +161,54 @@ flowchart LR
 
 - `id`는 이후 A-006 경로(`/api/errors/{id}/attempts`)에 쓴다.
 - 422의 응답 본문은 FastAPI 기본 `{ "detail": ... }`이다(`detail`은 안내 문구 문자열, 필드 형식 오류면 배열). 형식 통일은 3절 [결정 필요].
+
+### A-003 기존 기록 검색
+| 항목 | 내용 |
+|------|------|
+| 목적 | 입력한 에러 메시지와 비슷한 해결된 기록을 유사도 높은 순으로 돌려준다 (R-002, D-040) |
+| 메서드·경로 | `POST /api/errors/search` (에러 메시지가 최대 1만 자라 GET 쿼리 대신 본문으로 받는다) |
+| 호출 시점 | "해결 방법 찾기"를 누를 때. 에러를 저장하기 전이며, 이 API는 아무것도 저장하거나 바꾸지 않는다 (D-025) |
+| 요청 | JSON 본문 `error_message` (문자열, 최대 10,000자). 공백뿐이면 422, 넘으면 422. 인증 헤더 없음 |
+| 처리 | `resolved` 상태인 기록만 비교한다. 두 메시지의 공백 모양과 대소문자를 무시하고 `difflib.SequenceMatcher`의 비율을 0~100%(반올림)로 바꾼다. 60% 이상만 돌려준다 |
+| 정렬 | 유사도 내림차순. 같으면 `id`가 큰(최근) 기록이 먼저. 개수 제한은 없다 (화면에서 위 2건만 보이고 나머지는 스크롤, SCREEN-SPEC_5) |
+| 담당 | 팀원 1 (라우터 `backend/app/routers/records.py`, SQL `backend/app/repositories/errors.py`의 `list_resolved_errors()`·`get_tags_by_error_ids()`, 시도 수는 `repositories/attempts.py`의 `count_by_error_ids()`, D-038) |
+
+**요청 예시**
+```json
+{ "error_message": "ModuleNotFoundError: No module named 'google.generativeai'" }
+```
+
+**응답 예시 (200)**
+```json
+[
+  {
+    "id": 3,
+    "error_message": "ModuleNotFoundError: No module named 'google.generativeai'",
+    "similarity": 100,
+    "summary": "패키지가 다른 가상환경에 설치돼 있었음. which python으로 환경 확인 후 프로젝트 환경 활성화",
+    "attempt_count": 2,
+    "tags": [{ "id": 1, "name": "Python" }, { "id": 4, "name": "가상환경" }],
+    "resolved_at": "2026-11-02T15:40:00+09:00"
+  }
+]
+```
+
+**응답 필드** (배열의 각 항목)
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `id` | 정수 | 비슷한 기록의 에러 ID |
+| `error_message` | 문자열 | 그 기록의 에러 메시지 (화면은 첫 줄만 제목으로 쓴다) |
+| `similarity` | 정수 | 유사도(%), 60~100 |
+| `summary` | 문자열 | 내 한 줄 정리 = 해결법 |
+| `attempt_count` | 정수 | 그 기록의 시도 수 ("시도 N회 만에 해결") |
+| `tags` | 배열 | 붙은 태그 (`id`, `name`, 이름순) |
+| `resolved_at` | 문자열 | 해결 시각. ISO 8601 한국 시간 (D-015) |
+
+- 비슷한 기록이 없으면 빈 배열 `[]`을 돌려준다. 프론트는 0건이면 바로 A-002 → A-005로 넘어간다 (SCREEN-SPEC_5 화면 흐름).
+- 유사도는 글자 단위 비교라서, 앞부분이 같은 메시지(예: `ModuleNotFoundError: No module named …`)끼리는 뒷부분이 달라도 60%를 넘을 수 있다. Traceback 전체와 한 줄 메시지처럼 길이가 크게 다를 때의 보정은 Later (PRD Q-002).
+- "같은 에러예요, 이 방법 적용"은 전용 API 없이 A-002 → A-006(`result=solved`, `summary`는 고른 기록의 `summary`)로 처리한다 (D-041).
+- `POST /errors/search`는 `GET /errors/{id}`(A-009)와 메서드가 달라 충돌하지 않지만, 위 순서 규칙대로 A-009보다 위에 선언했다.
+- 422의 응답 본문은 A-002와 같다.
 
 ### A-004 시리즈 목록 (`GET /series`)
 | 항목 | 내용 |
@@ -430,6 +478,7 @@ flowchart LR
 - [x] A-005가 `previous_attempts` 없이도 그대로 동작하고, 있으면 프롬프트에 `<attempts>` 블록이 붙는다 (2026-11-02 백엔드 확인, 실제 Gemini 응답은 미확인)
 - [x] A-008이 최근 등록 순으로 주고, `status`·`tag_id`(모두 포함, 없는 ID는 `[]`)·`q`(대소문자 무시, `%`·`_` 글자 그대로)로 거른다 (2026-11-02 백엔드 확인)
 - [x] A-009가 시도를 시도 번호 순서로 주고, 없는 ID는 404 안내를 준다 (2026-11-02 백엔드 확인)
+- [x] A-003이 해결된 기록만 유사도 60% 이상, 높은 순으로 돌려주고, 미해결 기록·무관한 메시지·빈 입력(422)을 응답 예시대로 처리한다 (2026-11-02 임시 DB 백엔드 확인, main 병합 후 재확인)
 - [ ] 프론트 코드에 Gemini API 키와 Gemini 직접 호출이 없다
 - [x] 백엔드에 `.env.example`이 있고, `.env`는 `.gitignore`로 커밋에서 제외된다
 
@@ -450,3 +499,4 @@ flowchart LR
 | v5 | 2026-11-02 | A-002 구현됨: 요청 필드(평평한 필드 `series_id`/`new_series_name`, `tag_ids`/`new_tag_names`), 검사 후 한 트랜잭션 저장, 같은 이름 시리즈는 기존 사용(D-033), 응답 예시. A-005 `previous_attempts`·A-006 구현됨. 7절 확인 항목 추가 |
 | v6 | 2026-11-02 | A-008 상세(쿼리 `status`·`tag_id`(모두 포함, 없는 ID는 빈 결과)·`q`(대소문자 무시, `%`·`_` 글자 그대로), 최근 등록 순, 응답 필드), A-009 상세(시도 목록 `seq` 순, 404 안내). 시도 조회 SQL 위치(D-038), 라우트 선언 순서 메모. 모두 미구현 |
 | v6 | 2026-11-02 | A-008·A-009 구현됨. 목록 쿼리 4번 고정(N+1 없음), `q`는 메시지 전체 대상, 숫자가 아닌 `{id}`는 422. 7절 확인 항목 2개 추가 |
+| v6 | 2026-11-02 | A-003 구현됨: `POST /api/errors/search`, 요청·응답 필드, 해결된 기록만·유사도 60% 이상·높은 순(D-040), "이 방법 적용"은 A-002 → A-006(D-041). 7절 확인 항목 추가 |

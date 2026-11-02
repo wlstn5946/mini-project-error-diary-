@@ -23,7 +23,7 @@ import '../features/solve/solve.css'
 // S-001 에러 해결 (R-001 ~ R-004, SCREEN-SPEC_4 화면 흐름).
 // 해결 방법 찾기 → A-003 비슷한 기존 기록 검색 → 0건이거나 "해당 없음"이면 A-002로 에러 저장(D-025)
 // → A-005 AI 제안 → A-006 시도 기록 → 해결됨이면 해결 완료, 아니면 이전 시도를 붙여 A-005 다시 (D-027)
-// 비슷한 기록의 "이 방법 적용": A-002로 새 기록 저장 → A-006으로 해결됨 처리(한 줄 정리 복사) → 내 기록으로 이동 (D-036)
+// 비슷한 기록의 "이 방법 적용": A-002로 새 기록 저장 → A-006으로 해결됨 처리(한 줄 정리 복사) → 내 기록으로 이동 (D-041)
 
 type Tab = 'input' | 'analysis'
 type SavedAttempt = { seq: number; action: string; result: AttemptResult }
@@ -139,7 +139,7 @@ function SolvePage() {
     await saveAndAsk()
   }
 
-  // "같은 에러예요, 이 방법 적용": 새 기록을 저장하고 고른 기록의 한 줄 정리를 복사해 해결됨으로 처리한 뒤 내 기록으로 간다 (D-036)
+  // "같은 에러예요, 이 방법 적용": 새 기록을 저장하고 고른 기록의 한 줄 정리를 복사해 해결됨으로 처리한 뒤 내 기록으로 간다 (D-041)
   async function applyMatch(match: SimilarError) {
     const message = errorMessage.trim()
     if (!message || seriesChoice === null || busy.current) return
