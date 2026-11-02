@@ -1,8 +1,30 @@
-"""팀원 1 (찾기·정리): A-002, A-003, A-004, A-008 자리 (API-SPEC 5절, 모두 후보).
+"""팀원 1 (찾기·정리): A-002, A-003, A-004, A-008 (API-SPEC 5절).
 
 경로는 /errors, /errors/search 처럼 전체 상대 경로로 적는다. prefix(/api)는 main.py에서 붙인다.
+이번 범위는 A-004 중 GET /series만 구현한다. 나머지는 후보 상태 그대로다.
+SQL은 이 파일에 쓰지 않고 backend/app/repositories/에만 둔다. (D-016)
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
+
+from app.db import get_db
+from app.repositories import series as series_repo
 
 router = APIRouter(tags=["records"])
+
+
+class SeriesResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: str | None
+    created_at: str
+
+
+# A-004 시리즈 목록 (R-001, D-006). 최근 만든 순, 없으면 빈 배열.
+@router.get("/series", response_model=list[SeriesResponse])
+def list_series(db: Session = Depends(get_db)) -> list[SeriesResponse]:
+    return [SeriesResponse.model_validate(series) for series in series_repo.list_series(db)]

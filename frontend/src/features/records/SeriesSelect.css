@@ -1,0 +1,41 @@
+/* 시리즈 선택 (시안 에러해결창_예시.png ① 시리즈 부분 참고) */
+.series-select {
+  margin-bottom: 16px;
+}
+
+.series-row {
+  display: flex;
+  gap: 8px;
+}
+
+.series-control {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.series-control:disabled {
+  background: var(--sidebar-bg);
+  color: var(--text-sub);
+}
+
+.series-select .hint {
+  margin: 6px 0 0;
+}
+
+.series-error {
+  margin: 6px 0 0;
+  color: #b91c1c;
+  font-size: 14px;
+}
+
+.series-retry {
+  margin-left: 8px;
+  padding: 2px 10px;
+  font-size: 13px;
+}
