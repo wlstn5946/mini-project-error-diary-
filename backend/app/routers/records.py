@@ -1,16 +1,20 @@
-"""팀원 1 (찾기·정리): A-002, A-003, A-004, A-008 (API-SPEC 5절).
+"""팀원 1 (찾기·정리): A-002, A-003, A-004, A-008, A-009 (API-SPEC 5절).
 
 경로는 /errors, /errors/search 처럼 전체 상대 경로로 적는다. prefix(/api)는 main.py에서 붙인다.
-이번 범위는 A-002(POST /errors), A-004(GET /series, GET /tags)만 구현한다. 나머지는 후보 상태 그대로다.
+이번 범위는 A-002(POST /errors), A-004(GET /series, GET /tags), A-008(GET /errors), A-009(GET /errors/{id})를 구현한다.
+A-003(/errors/search)을 만들 때는 A-009(/errors/{error_id})보다 위에 선언한다. 먼저 선언한 경로가 먼저 매칭되기 때문이다.
 SQL은 이 파일에 쓰지 않고 backend/app/repositories/에만 둔다. (D-016)
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Tag
+from app.models import ErrorRecord, Tag
+from app.repositories import attempts as attempts_repo
 from app.repositories import errors as errors_repo
 from app.repositories import series as series_repo
 from app.repositories import tags as tags_repo
@@ -147,4 +151,80 @@ def create_error(body: ErrorCreateRequest, db: Session = Depends(get_db)) -> Err
         series=NamedItem.model_validate(series) if series else None,
         tags=[NamedItem.model_validate(tag) for tag in tags],
         created_at=error.created_at,
+    )
+
+
+class ErrorListItem(BaseModel):
+    id: int
+    error_message: str
+    status: str
+    series: NamedItem | None
+    tags: list[NamedItem]
+    attempt_count: int
+    created_at: str
+    resolved_at: str | None
+
+
+class AttemptItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    seq: int
+    action: str
+    result: str
+    created_at: str
+
+
+class ErrorDetailResponse(ErrorListItem):
+    situation: str | None
+    summary: str | None
+    attempts: list[AttemptItem]
+
+
+def _list_items(db: Session, errors: list[ErrorRecord]) -> list[ErrorListItem]:
+    """시리즈·태그·시도 수를 에러마다 따로 조회하지 않고 한 번씩 모아서 가져온다 (N+1 조회 방지)."""
+    error_ids = [error.id for error in errors]
+    series = series_repo.get_series_by_ids(db, {error.series_id for error in errors if error.series_id is not None})
+    tags = errors_repo.get_tags_by_error_ids(db, error_ids)
+    counts = attempts_repo.count_by_error_ids(db, error_ids)
+    return [
+        ErrorListItem(
+            id=error.id,
+            error_message=error.error_message,
+            status=error.status,
+            series=NamedItem.model_validate(series[error.series_id]) if error.series_id in series else None,
+            tags=[NamedItem.model_validate(tag) for tag in tags[error.id]],
+            attempt_count=counts[error.id],
+            created_at=error.created_at,
+            resolved_at=error.resolved_at,
+        )
+        for error in errors
+    ]
+
+
+# A-008 내 기록 목록 (R-005, D-035, D-036). 필터는 모두 선택이고, 함께 쓰면 모두 만족하는 기록만 준다.
+@router.get("/errors", response_model=list[ErrorListItem])
+def list_errors(
+    status: Literal["unresolved", "resolved"] | None = None,
+    # 고른 태그를 모두 가진 에러만. 없는 태그 ID면 빈 결과다 (필터 결과로 본다).
+    tag_id: list[int] = Query(default=[]),
+    q: str | None = Query(default=None, max_length=200),
+    db: Session = Depends(get_db),
+) -> list[ErrorListItem]:
+    keyword = (q or "").strip() or None
+    errors = errors_repo.list_errors(db, status, list(dict.fromkeys(tag_id)), keyword)
+    return _list_items(db, errors)
+
+
+# A-009 에러 일기 상세 (R-004, R-005, D-031). 시도는 시도 번호 순서.
+@router.get("/errors/{error_id}", response_model=ErrorDetailResponse)
+def get_error_detail(error_id: int, db: Session = Depends(get_db)) -> ErrorDetailResponse:
+    error = errors_repo.get_error(db, error_id)
+    if error is None:
+        raise HTTPException(status_code=404, detail="에러 기록을 찾을 수 없어요.")
+    item = _list_items(db, [error])[0]
+    return ErrorDetailResponse(
+        **item.model_dump(),
+        situation=error.situation,
+        summary=error.summary,
+        attempts=[AttemptItem.model_validate(attempt) for attempt in attempts_repo.list_attempts(db, error.id)],
     )
