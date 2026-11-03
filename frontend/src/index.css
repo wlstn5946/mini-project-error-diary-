@@ -64,6 +64,107 @@ body {
   font-weight: 700;
 }
 
+/* 사이드바 대시보드: 4칸을 한 줄씩, 굵은 글씨와 테두리로 구분한다 (D-074, 시안 내기록창_예시.png).
+   누를 수 있는 칸은 3D 버튼처럼 아래 그림자가 있고, 누르는 동안 그림자만큼 내려앉는다. */
+.sidebar-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.stat {
+  --stat-color: #374151;
+  --stat-tint: #f3f4f6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border: 2px solid var(--stat-color);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 3px 0 var(--stat-color);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.3;
+  text-decoration: none;
+}
+
+.stat-label {
+  white-space: nowrap;
+}
+
+.stat-value {
+  color: var(--stat-color);
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stat-all {
+  --stat-color: #374151;
+  --stat-tint: #f3f4f6;
+}
+
+.stat-resolved {
+  --stat-color: #15803d;
+  --stat-tint: #dcfce7;
+}
+
+.stat-unresolved {
+  --stat-color: #dc2626;
+  --stat-tint: #fee2e2;
+}
+
+.stat-reuse {
+  --stat-color: #2b3fb8;
+  --stat-tint: #e8edff;
+}
+
+/* 누를 수 있는 칸 */
+a.stat {
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background-color 0.12s ease;
+}
+
+a.stat:hover {
+  background: var(--stat-tint);
+}
+
+a.stat:active {
+  transform: translateY(3px);
+  box-shadow: 0 0 0 var(--stat-color);
+}
+
+a.stat:focus-visible {
+  outline: 3px solid #93a4f4;
+  outline-offset: 2px;
+}
+
+/* 지금 보고 있는 보기 */
+a.stat.active {
+  background: var(--stat-tint);
+}
+
+/* 표시만 하는 칸(재사용 해결): 눌리지 않는다 */
+.stat.static {
+  box-shadow: none;
+  border-style: dashed;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  a.stat {
+    transition: none;
+  }
+}
+
 .content {
   flex: 1;
   padding: 24px 28px;

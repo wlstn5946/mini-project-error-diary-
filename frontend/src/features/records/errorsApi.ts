@@ -37,10 +37,33 @@ export type SavedError = {
 
 const SAVE_FAILED = '에러를 저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.'
 
+// 기록이 저장·삭제돼 개수가 바뀌었다는 알림. 사이드바 통계(SidebarStats, D-074)가 듣고 숫자를 다시 불러온다.
+export const RECORDS_CHANGED_EVENT = 'records-changed'
+function notifyRecordsChanged() {
+  window.dispatchEvent(new Event(RECORDS_CHANGED_EVENT))
+}
+
 // 실패하면 화면에 보여줄 문구를 담은 ApiError를 던진다. 서버가 준 안내 문구(detail 문자열)가 있으면 그것을 쓴다.
 export async function createError(body: ErrorCreateBody): Promise<SavedError> {
   const res = await request('/api/errors', jsonInit('POST', body), SAVE_FAILED)
-  return (await res.json()) as SavedError
+  const saved = (await res.json()) as SavedError
+  notifyRecordsChanged()
+  return saved
+}
+
+// A-017 GET /api/errors/stats 응답 (API-SPEC_10 6절). 사이드바 통계 (D-074)
+export type ErrorStats = {
+  total: number
+  resolved: number
+  unresolved: number
+  // "이 방법 적용"으로 저장한 해결 기록 수
+  reused_resolved: number
+}
+
+// 서버 오류·네트워크 오류면 예외를 던지므로 호출하는 쪽에서 처리한다.
+export async function getErrorStats(signal?: AbortSignal): Promise<ErrorStats> {
+  const res = await request('/api/errors/stats', { signal })
+  return (await res.json()) as ErrorStats
 }
 
 export type ErrorStatus = 'unresolved' | 'resolved'
@@ -152,9 +175,13 @@ const DELETE_FAILED = '기록을 지우지 못했어요. 잠시 뒤 다시 시�
 export async function deleteError(id: number): Promise<DeleteResult> {
   try {
     await request(`/api/errors/${id}`, { method: 'DELETE' }, DELETE_FAILED)
+    notifyRecordsChanged()
     return 'deleted'
   } catch (err) {
-    if (err instanceof ApiError && err.status === 404) return 'not-found'
+    if (err instanceof ApiError && err.status === 404) {
+      notifyRecordsChanged()
+      return 'not-found'
+    }
     throw err
   }
 }

@@ -6,7 +6,7 @@
 - **v9는 v8에 A-015(시리즈 새로 만들기, `POST /api/series`)를 더한 것이다(D-061). 나머지 API는 바뀌지 않는다.**
 - **v8은 v7의 API를 그대로 두고 DB를 PostgreSQL로 바꾼 것이다(지금은 로컬, 이후 Supabase. 2절, D-057, D-058).**
 - **v7의 범위는 v6에 "내 기록 정리"(기록 수정·삭제, 태그·시리즈 관리, 시리즈 안 순서)를 더한 것이다.** A-010 ~ A-014는 새 API다. A-010 ~ A-014와 A-004의 `error_count`, A-008·A-009의 `series_id`·`series_order`는 모두 구현됨이다.
-  - 상세를 적는 API: A-001 ~ A-016
+  - 상세를 적는 API: A-001 ~ A-017 (A-017 기록 통계는 v10에 추가, D-074)
 - 이번 버전에서 다루지 않는 것:
   - 기능 API의 요청·응답 필드 (Q-001 ~ Q-004, DATA-MODEL 결정 후)
   - 테이블 구조 (DATA-MODEL_N.md)
@@ -86,6 +86,7 @@ flowchart LR
 | A-014 | 시리즈 안 순서 바꾸기 | PUT | `/series/{id}/order` (전체: `/api/series/{id}/order`) | R-005 | 팀원 1 | 구현됨 (6절, D-051) |
 | A-015 | 시리즈 새로 만들기 | POST | `/series` (전체: `/api/series`) | R-005 | 팀원 1 | 구현됨 (6절, D-061) |
 | A-016 | AI 피드백 | POST | `/errors/{id}/feedback` (전체: `/api/errors/{id}/feedback`) | R-004 | 팀원 2 | 구현됨 (6절, Q-003, D-068, 프롬프트 PROMPTS P-002) |
+| A-017 | 기록 통계 | GET | `/errors/stats` (전체: `/api/errors/stats`) | R-005 | 팀원 1 | 구현됨 (6절, D-074). 사이드바 대시보드용 |
 
 - 기능 API의 요청·응답 필드는 해당 Q-ID와 DATA-MODEL이 결정된 뒤 작성한다.
 - A-002를 부르는 곳은 에러 해결 화면뿐이라 `attempts`를 필수로 바꿔도 다른 화면은 깨지지 않는다. (D-065)
@@ -100,11 +101,11 @@ flowchart LR
 | 담당 | 라우터 파일 | API |
 |------|-------------|-----|
 | 공용 | `backend/app/routers/health.py` | A-001 |
-| 팀원 1 | `backend/app/routers/records.py` | A-002(구현됨), A-003(구현됨), A-004(`/series`, `/tags` 구현됨), A-008(구현됨), A-009(구현됨), A-010 ~ A-015(구현됨) |
+| 팀원 1 | `backend/app/routers/records.py` | A-002(구현됨), A-003(구현됨), A-004(`/series`, `/tags` 구현됨), A-008(구현됨), A-009(구현됨), A-010 ~ A-015(구현됨), A-017(구현됨) |
 | 팀원 2 | `backend/app/routers/solve.py` | A-005(구현됨), A-006(구현됨), A-007(구현됨), A-016(구현됨) |
 
 - `main.py`는 `records`를 `solve`보다 먼저 등록한다. 고정 경로(`/errors/search`)가 변수 경로(`/errors/{id}`)보다 먼저 매칭되게 하기 위해서다.
-- 같은 이유로 `records.py` 안에서도 A-003(`/errors/search`)은 A-009(`/errors/{id}`)보다 **위에** 선언한다. `GET /errors/{id}`와 `POST /errors/{id}/attempts`는 메서드·경로가 달라 충돌하지 않는다.
+- 같은 이유로 `records.py` 안에서도 A-003(`/errors/search`)과 A-017(`GET /errors/stats`)은 A-009(`/errors/{id}`)보다 **위에** 선언한다. `GET /errors/{id}`와 `POST /errors/{id}/attempts`는 메서드·경로가 달라 충돌하지 않는다.
 
 ## 6. API 상세
 
@@ -632,6 +633,33 @@ flowchart LR
 
 - A-002·A-010이 새 시리즈를 만들 때도 같은 `create_series()`를 쓴다. 설명 인자는 기본값 `None`이라 호출은 그대로다. A-002·A-010의 같은 이름 규칙(새로 만들지 않고 기존 시리즈를 씀, D-033)은 바뀌지 않는다. A-015만 같은 이름을 409로 막는다.
 
+### A-017 기록 통계
+| 항목 | 내용 |
+|------|------|
+| 목적 | 사이드바 "내 기록 통계" 대시보드의 에러 기록·해결·미해결·재사용 해결 개수를 한 번에 돌려준다 (R-005, D-074) |
+| 메서드·경로 | `GET /api/errors/stats` |
+| 요청 | 본문·쿼리 없음. 인증 헤더 없음 |
+| 처리 | 상태별(`resolved`/`unresolved`) 에러 수와, "재사용 해결" 수를 센다. 아무것도 저장하거나 바꾸지 않는다. `GET /errors/{id}`(A-009)와 경로가 겹치므로 A-009보다 위에 선언한다 |
+| 담당 | 팀원 1 (라우터 `backend/app/routers/records.py`, SQL `repositories/errors.py`의 `count_by_status()`·`count_reused_resolved()`) |
+
+**응답 예시 (200)**
+```json
+{ "total": 18, "resolved": 15, "unresolved": 3, "reused_resolved": 9 }
+```
+
+**응답 필드**
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `total` | 정수 | 전체 기록 수. 항상 `resolved + unresolved`와 같다 |
+| `resolved` | 정수 | 해결된 기록 수 (`status=resolved`) |
+| `unresolved` | 정수 | 미해결 기록 수 (`status=unresolved`) |
+| `reused_resolved` | 정수 | "이 방법 적용"으로 저장한 해결 기록 수 |
+
+- **재사용 해결 기준**: `status`가 `resolved`이고, 해결됨(`solved`) 시도 중 `action`이 `기존 기록 #N의 해결 방법 적용` 모양(SQL `LIKE '기존 기록 #%의 해결 방법 적용'`)인 시도가 있는 에러를 한 번씩 센다. 한 에러에 그런 시도가 둘 이상이어도 한 번만 센다. 이 문구는 프론트 `SolvePage.tsx`의 "이 방법 적용"이 남기는 문구(D-069)와 같아야 하고, `repositories/errors.py`의 `REUSE_ACTION_PATTERN`에 한 곳으로 모아 둔다.
+- **한계**: 사용자가 시도 내용에 같은 문구를 직접 입력하면 재사용으로 센다. 재사용 전용 필드는 만들지 않았다 (D-041, D-074). 미해결 기록이나 마지막이 아닌 실패 시도의 같은 문구는 세지 않는다.
+- 기록이 없으면 모두 0이다.
+- 프론트는 화면을 옮길 때·창으로 돌아올 때·기록이 저장·삭제될 때 이 API를 다시 부른다 (SCREEN-SPEC_8 3절).
+
 ## 7. 완료 기준
 - [ ] 두 사람 컴퓨터에서 백엔드와 프론트가 각각 실행된다 (실행 명령은 README, [결정 필요])
 - [x] 브라우저에서 A-001을 직접 호출하면 응답 예시와 같은 응답이 온다 (2026-10-30 백엔드 확인)
@@ -658,6 +686,8 @@ flowchart LR
 - [x] (v10) A-009·A-010 응답에 `ai_feedback`이 있고, 컬럼 추가 전 기록은 null이며 A-008 목록에는 없다 (2026-11-03 백엔드 확인). A-005·A-006은 리팩터링(`_generate_json()` 공용화) 뒤에도 동작한다 (2026-11-03 확인)
 - [x] (v10) `genai.Client()` 생성 실패도 화면이 멈추지 않게 `unavailable`로 처리한다 (2026-11-03, 확인 중 찾은 결함을 고침. A-005에도 같은 결함이 있었다)
 - [x] 컬럼 추가(D-052) 뒤 기존 DB의 시리즈 소속 에러에 `series_order`가 `created_at` 순으로 채워진다 (2026-11-03 옛 모양 DB 흉내와 실제 DB 복사본으로 확인, 다시 해도 값을 덮어쓰지 않음)
+- [x] (v10) A-017이 `{ total, resolved, unresolved, reused_resolved }`를 돌려주고 `total = resolved + unresolved`이며 실제 목록(A-008)으로 센 값과 같다. `/errors/{id}`(A-009)는 그대로 동작하고 없는 ID는 404다 (2026-11-03 백엔드 확인)
+- [x] (v10) 재사용 해결 계산: 해결 + 해결됨 시도 문구가 "기존 기록 #N의 해결 방법 적용"인 기록만 세고(같은 에러의 중복 시도는 한 번), 미해결·해결 안 됨 시도·다른 문구는 세지 않는다 (2026-11-03 트랜잭션 롤백 테스트로 확인, 기록은 남기지 않음)
 - [ ] 프론트 코드에 Gemini API 키와 Gemini 직접 호출이 없다
 - [x] 백엔드에 `.env.example`이 있고, `.env`는 `.gitignore`로 커밋에서 제외된다
 
@@ -687,3 +717,4 @@ flowchart LR
 | v8 | 2026-11-03 | 전체 구조의 DB를 PostgreSQL(로컬, 이후 Supabase)로, 기술 스택 표기 변경(D-057). `.env`에 `DATABASE_URL` 추가(D-059). API 요청·응답은 바뀌지 않음 |
 | v9 | 2026-11-03 | A-015 시리즈 새로 만들기(`POST /api/series`) 추가·구현됨(D-061). "시리즈를 새로 만드는 API는 두지 않는다"를 고침(태그는 그대로 없음). `create_series()`에 `description` 인자 추가(기본값 `None`) |
 | v10 | 2026-11-03 | A-002를 "기록 저장"으로 확장(`attempts` 필수·`summary`, 한 트랜잭션, 마지막 시도가 해결됨이면 resolved, 미해결에도 정리 저장, D-065 ~ D-067), A-007 확정·구현(D-070), A-016 AI 피드백 추가·구현(D-068, PROMPTS P-002), A-009·A-010 응답에 `ai_feedback`, A-003·A-005 호출 시점 갱신(D-064, D-065, D-069). A-006은 화면이 더 이상 부르지 않지만 유지. 7절 확인 항목 추가 |
+| v10 | 2026-11-03 | A-017 기록 통계(`GET /api/errors/stats`) 추가·구현됨(D-074): `total`·`resolved`·`unresolved`·`reused_resolved`, 재사용 해결은 해결됨 시도 문구 "기존 기록 #N의 해결 방법 적용"(D-069)으로 센다(전용 필드 없음). A-009보다 위에 선언. 7절 확인 항목 2개 추가 |

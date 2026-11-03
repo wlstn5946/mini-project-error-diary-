@@ -8,12 +8,38 @@ from typing import Literal
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from app.models import ErrorRecord, ErrorTag, Tag, now_kst
+from app.models import Attempt, ErrorRecord, ErrorTag, Tag, now_kst
 from app.repositories import attempts as attempts_repo
+
+# 비슷한 기록의 "이 방법 적용"이 남기는 시도 문구 (프론트 SolvePage의 applyMatch와 같게 유지한다, D-069).
+# "재사용 해결" 개수(사이드바 통계, D-074)를 이 문구로 센다.
+REUSE_ACTION_PATTERN = "기존 기록 #%의 해결 방법 적용"
 
 
 def get_error(db: Session, error_id: int) -> ErrorRecord | None:
     return db.get(ErrorRecord, error_id)
+
+
+def count_by_status(db: Session) -> dict[str, int]:
+    """상태별 에러 수. 없는 상태는 0이다. 사이드바 통계(D-074)용."""
+    counts = {"unresolved": 0, "resolved": 0}
+    for status, count in db.execute(select(ErrorRecord.status, func.count()).group_by(ErrorRecord.status)):
+        counts[status] = count
+    return counts
+
+
+def count_reused_resolved(db: Session) -> int:
+    """"이 방법 적용"으로 저장한 해결 기록 수. 해결됨 시도의 문구가 REUSE_ACTION_PATTERN인 해결된 에러를 센다. (D-074)"""
+    query = (
+        select(func.count(func.distinct(ErrorRecord.id)))
+        .join(Attempt, Attempt.error_id == ErrorRecord.id)
+        .where(
+            ErrorRecord.status == "resolved",
+            Attempt.result == "solved",
+            Attempt.action.like(REUSE_ACTION_PATTERN),
+        )
+    )
+    return db.scalar(query) or 0
 
 
 def list_errors(

@@ -336,6 +336,26 @@ def list_errors(
     return _list_items(db, errors)
 
 
+class ErrorStatsResponse(BaseModel):
+    total: int
+    resolved: int
+    unresolved: int
+    reused_resolved: int
+
+
+# A-017 기록 통계 (R-005, D-074). 사이드바 대시보드의 에러 기록·해결·미해결·재사용 해결 개수.
+# 고정 경로라서 A-009(/errors/{error_id})보다 위에 선언한다. 먼저 선언한 경로가 먼저 매칭되기 때문이다.
+@router.get("/errors/stats", response_model=ErrorStatsResponse)
+def get_error_stats(db: Session = Depends(get_db)) -> ErrorStatsResponse:
+    counts = errors_repo.count_by_status(db)
+    return ErrorStatsResponse(
+        total=counts["resolved"] + counts["unresolved"],
+        resolved=counts["resolved"],
+        unresolved=counts["unresolved"],
+        reused_resolved=errors_repo.count_reused_resolved(db),
+    )
+
+
 # A-009 에러 일기 상세 (R-004, R-005, D-031). 시도는 시도 번호 순서.
 @router.get("/errors/{error_id}", response_model=ErrorDetailResponse)
 def get_error_detail(error_id: int, db: Session = Depends(get_db)) -> ErrorDetailResponse:
