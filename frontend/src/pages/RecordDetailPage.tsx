@@ -4,11 +4,15 @@ import ConfirmDialog from '../features/records/ConfirmDialog'
 import { deleteError, getError, type ErrorDetail as Detail } from '../features/records/errorsApi'
 import ErrorDetail from '../features/records/ErrorDetail'
 import RecordEditForm from '../features/records/RecordEditForm'
+import FeedbackBox from '../features/solve/FeedbackBox'
+import SummaryEditForm from '../features/solve/SummaryEditForm'
+import { useFeedback } from '../features/solve/useFeedback'
 import '../features/records/records.css'
 
 // S-003 에러 일기 상세 (/records/:id, D-037, SCREEN-SPEC_6). 담당 팀원 1 (D-031, D-039).
 // 기록 삭제(A-011, D-043)가 여기 있다. 확인 창을 거쳐 지우고 들어온 목록으로 돌아간다.
 // 기록 수정(A-010, D-047)은 같은 화면의 편집 모드다. 저장하면 응답으로 상세를 바꿔 보여준다.
+// 한 줄 정리 수정(A-007)과 AI 피드백(A-016)은 features/solve/의 공용 컴포넌트를 쓴다 (D-064). 둘은 동시에 열지 않는다.
 
 // 응답이 어느 요청의 결과인지 key로 구분한다. 현재 key와 다르면 아직 불러오는 중이다.
 // detail: 성공, null: 없는 ID(404), 'error': 불러오기 실패
@@ -30,6 +34,7 @@ function RecordDetailPage() {
   const [result, setResult] = useState<DetailResult | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [editingSummary, setEditingSummary] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteFailure, setDeleteFailure] = useState<string | null>(null)
   // 다른 곳에서 이미 지워진 기록이었다 (삭제 요청이 404)
@@ -58,6 +63,7 @@ function RecordDetailPage() {
   }, [key, validId, errorId])
 
   const detail = validId ? result?.detail : null
+  const feedback = useFeedback(validId ? errorId : null)
 
   function closeConfirm() {
     setConfirming(false)
@@ -114,6 +120,14 @@ function RecordDetailPage() {
         ) : detail ? (
           <ErrorDetail
             detail={detail}
+            feedbackSection={
+              <FeedbackBox
+                feedback={feedback.feedback ?? detail.ai_feedback}
+                status={feedback.status}
+                canRequest={detail.attempts.length > 0 || Boolean(detail.summary)}
+                onRequest={() => feedback.request(detail.id)}
+              />
+            }
             actions={
               editing ? (
                 <RecordEditForm
@@ -128,10 +142,27 @@ function RecordDetailPage() {
                     setGone(true)
                   }}
                 />
+              ) : editingSummary ? (
+                // 정리 수정 중에는 버튼 줄을 숨기고 폼만 보인다. 기록 수정(편집 모드)과 같은 방식이다.
+                <SummaryEditForm
+                  errorId={detail.id}
+                  status={detail.status}
+                  initial={detail.summary}
+                  onSaved={(summary) => {
+                    // 정리를 바꾸고 피드백을 다시 받아 덮어쓴다 (A-007 → A-016)
+                    setResult({ key, detail: { ...detail, summary } })
+                    setEditingSummary(false)
+                    void feedback.request(detail.id)
+                  }}
+                  onCancel={() => setEditingSummary(false)}
+                />
               ) : (
                 <>
                   <button type="button" className="btn-secondary" onClick={() => setEditing(true)}>
                     태그·시리즈·상황 수정
+                  </button>
+                  <button type="button" className="btn-secondary" onClick={() => setEditingSummary(true)}>
+                    {detail.summary ? '한 줄 정리 수정' : '한 줄 정리 쓰기'}
                   </button>
                   <button type="button" className="btn-danger" onClick={() => setConfirming(true)}>
                     삭제

@@ -1,4 +1,4 @@
-// AI 제안·시도 기록 API 호출 (팀원 2). 컴포넌트에서 fetch를 직접 쓰지 않고 이 파일을 거친다. 서버 호출은 api.ts의 request()로 한다 (D-056).
+// AI 제안·시도 기록·한 줄 정리·AI 피드백 API 호출 (팀원 2). 컴포넌트에서 fetch를 직접 쓰지 않고 이 파일을 거친다. 서버 호출은 api.ts의 request()로 한다 (D-056).
 import { ApiError, jsonInit, request } from '../../api'
 
 export type Confidence = '높음' | '보통' | '낮음'
@@ -36,6 +36,29 @@ export async function requestSuggestion(errorMessage: string, previousAttempts: 
   } catch {
     return { status: 'unavailable', confidence: null, cause: null, solutions: [], message: UNAVAILABLE }
   }
+}
+
+// A-016 응답. 실패해도 200 + unavailable이다
+export type FeedbackResult = { status: 'ok' | 'unavailable'; feedback: string | null; message: string | null }
+
+export const FEEDBACK_UNAVAILABLE = '피드백을 가져오지 못했어요.'
+
+// A-016. 서버 꺼짐·네트워크 오류여도 예외를 던지지 않고 unavailable로 돌려준다. 화면이 멈추지 않게 하기 위해서다.
+export async function requestFeedback(errorId: number): Promise<FeedbackResult> {
+  try {
+    const res = await request(`/api/errors/${errorId}/feedback`, { method: 'POST' }, FEEDBACK_UNAVAILABLE)
+    return (await res.json()) as FeedbackResult
+  } catch {
+    return { status: 'unavailable', feedback: null, message: FEEDBACK_UNAVAILABLE }
+  }
+}
+
+const SUMMARY_FAILED = '한 줄 정리를 저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.'
+
+// A-007. 성공하면 저장된 정리(비우면 null)를 돌려준다. 실패하면 화면에 보여줄 문구를 담은 ApiError를 던진다 (422, 404)
+export async function updateSummary(errorId: number, summary: string): Promise<string | null> {
+  const res = await request(`/api/errors/${errorId}/summary`, jsonInit('PATCH', { summary }), SUMMARY_FAILED)
+  return ((await res.json()) as { summary: string | null }).summary
 }
 
 export type AttemptBody = { action: string; result: AttemptResult; summary: string | null }

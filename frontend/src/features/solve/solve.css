@@ -168,3 +168,52 @@
   color: #b91c1c;
   font-size: 14px;
 }
+
+/* 결과 탭 배너: 마지막 시도가 해결됨이 아니면 초록 대신 중립색 (D-064) */
+.resolved-banner.failed,
+.resolved-banner.partial {
+  border-color: var(--border);
+  background: var(--sidebar-bg);
+}
+
+.resolved-banner.failed .resolved-title,
+.resolved-banner.partial .resolved-title {
+  color: var(--text);
+}
+
+.resolved-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* AI 피드백 칸과 한 줄 정리 수정 폼 (결과 탭·에러 일기 상세가 같이 쓴다) */
+.feedback-box {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-left: 4px solid #2447d6;
+  background: #eef2ff;
+}
+
+.feedback-box .ai-label,
+.feedback-box .ai-text,
+.feedback-box .hint {
+  margin: 0;
+}
+
+.feedback-failed {
+  margin: 0;
+  color: var(--text-sub);
+  font-size: 14px;
+}
+
+.feedback-failed .btn-secondary {
+  margin-left: 8px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.summary-edit {
+  flex-basis: 100%;
+  margin: 8px 0 16px;
+}

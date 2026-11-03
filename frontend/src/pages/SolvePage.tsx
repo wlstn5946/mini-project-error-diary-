@@ -1,37 +1,40 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { createError, searchSimilarErrors, type ErrorCreateBody, type SavedError, type SimilarError } from '../features/records/errorsApi'
+import {
+  createError,
+  searchSimilarErrors,
+  type AttemptInput,
+  type ErrorCreateBody,
+  type SavedError,
+  type SimilarError,
+} from '../features/records/errorsApi'
 import SeriesSelect, { type SeriesChoice } from '../features/records/SeriesSelect'
 import SimilarRecords from '../features/records/SimilarRecords'
 import '../features/records/SimilarRecords.css'
 import TagInput, { type TagsValue } from '../features/records/TagInput'
 import AiSuggestionCard from '../features/solve/AiSuggestionCard'
 import AttemptForm from '../features/solve/AttemptForm'
-import ResolvedSummary from '../features/solve/ResolvedSummary'
-import {
-  AttemptSaveError,
-  createAttempt,
-  requestSuggestion,
-  RESULT_LABELS,
-  type AttemptBody,
-  type AttemptResult,
-  type PreviousAttempt,
-  type Suggestion,
-} from '../features/solve/solveApi'
+import SaveResult from '../features/solve/SaveResult'
+import { requestSuggestion, RESULT_LABELS, type AttemptBody, type PreviousAttempt, type Suggestion } from '../features/solve/solveApi'
+import { useFeedback } from '../features/solve/useFeedback'
 import '../features/solve/solve.css'
 
-// S-001 에러 해결 (R-001 ~ R-004, SCREEN-SPEC_4 화면 흐름).
-// 해결 방법 찾기 → A-003 비슷한 기존 기록 검색 → 0건이거나 "해당 없음"이면 A-002로 에러 저장(D-025)
-// → A-005 AI 제안 → A-006 시도 기록 → 해결됨이면 해결 완료, 아니면 이전 시도를 붙여 A-005 다시 (D-027)
-// 비슷한 기록의 "이 방법 적용": A-002로 새 기록 저장 → A-006으로 해결됨 처리(한 줄 정리 복사) → 내 기록으로 이동 (D-041)
+// S-001 에러 해결 (R-001 ~ R-004, SCREEN-SPEC_7). 탭은 에러 입력 / AI 제안 → 시도 기록 / 결과 3개다 (D-064).
+// 에러 메시지 입력이 멈추면 A-003으로 비슷한 기록을 자동으로 찾는다. "해당 없음 → AI에게 묻기"를 누르면 입력을 잠그고 A-005로 간다.
+// 에러와 시도는 화면에만 모아 두고, "기록 저장"을 누를 때 A-002 한 번으로 저장한다. 이어서 결과 탭에서 A-016으로 AI 피드백을 받는다.
+// 비슷한 기록의 "이 방법 적용"도 A-002로 저장(시도 1개, 해결됨)하고 결과 탭을 보여준다.
 
-type Tab = 'input' | 'analysis'
-type SavedAttempt = { seq: number; action: string; result: AttemptResult }
+type Tab = 'input' | 'analysis' | 'result'
 
-const SEARCH_FAILED_NOTICE = '비슷한 기록을 확인하지 못해 바로 AI에게 물었어요.'
+// 입력이 멈추고 잠시 뒤에 비슷한 기록을 찾는다
+const SEARCH_DELAY_MS = 300
+const SEARCH_FAILED_NOTICE = '비슷한 기록을 확인하지 못했어요.'
 const APPLY_FAILED = '이 방법을 적용하지 못했어요. 입력한 내용은 그대로 있으니 다시 시도해 주세요.'
 
 const EMPTY_TAGS: TagsValue = { existingIds: [], newNames: [] }
+
+// 어느 에러 메시지의 검색 결과인지 query로 구분한다. 현재 메시지와 다르면 아직 찾는 중이다. items가 null이면 실패.
+type SimilarResult = { query: string; items: SimilarError[] | null }
 
 function SolvePage() {
   const navigate = useNavigate()
@@ -43,30 +46,46 @@ function SolvePage() {
   // null이면 새 시리즈 이름이 비었거나 중복이다
   const [seriesChoice, setSeriesChoice] = useState<SeriesChoice | null>({ kind: 'none' })
   const [tagsValue, setTagsValue] = useState<TagsValue>(EMPTY_TAGS)
-  // A-002로 저장된 에러. 저장된 뒤에는 입력을 잠근다 (D-034)
-  const [saved, setSaved] = useState<SavedError | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  // 비슷한 기존 기록 (A-003). null이면 보여줄 것이 없다
-  const [searching, setSearching] = useState(false)
-  const [matches, setMatches] = useState<SimilarError[] | null>(null)
-  const [searchNotice, setSearchNotice] = useState<string | null>(null)
+  // "AI에게 묻기"(또는 "이 방법 적용" 성공)를 누르면 입력을 잠근다. 시도 기록이 그때의 에러 메시지에 대한 것이기 때문이다 (D-064)
+  const [locked, setLocked] = useState(false)
+  // 비슷한 기존 기록 (A-003)
+  const [similar, setSimilar] = useState<SimilarResult | null>(null)
   const [applyingId, setApplyingId] = useState<number | null>(null)
   const [applyError, setApplyError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<Suggestion | null>(null)
-  const [attempts, setAttempts] = useState<SavedAttempt[]>([])
-  const [attemptSaving, setAttemptSaving] = useState(false)
-  const [attemptError, setAttemptError] = useState<string | null>(null)
-  // 이미 해결된 에러라 더 기록할 수 없다 (A-006 409, D-032)
-  const [closed, setClosed] = useState(false)
-  const [resolvedSummary, setResolvedSummary] = useState<string | null>(null)
+  // 화면에 모아 둔 시도 (아직 저장하지 않음). 이번에 쓰는 시도는 폼에 있고 여기에 없다
+  const [collected, setCollected] = useState<AttemptInput[]>([])
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  // "기록 저장"으로 A-002에 저장된 기록. 있으면 결과 탭을 보여준다
+  const [saved, setSaved] = useState<SavedError | null>(null)
+  const feedback = useFeedback(saved?.id ?? null)
   // 저장 버튼을 빠르게 두 번 눌러도 요청은 한 번만 보낸다
   const busy = useRef(false)
 
-  const locked = saved !== null
+  const message = errorMessage.trim()
 
-  async function askAi(message: string, history: SavedAttempt[]) {
+  // 입력이 멈추고 300ms 뒤 A-003을 부른다. 메시지가 바뀌면 이전 요청은 취소하고, 늦게 온 응답은 버린다.
+  useEffect(() => {
+    if (locked || !message) return
+    const controller = new AbortController()
+    const timer = setTimeout(async () => {
+      const items = await searchSimilarErrors(message, controller.signal)
+      if (!controller.signal.aborted) setSimilar({ query: message, items })
+    }, SEARCH_DELAY_MS)
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [message, locked])
+
+  // 새 결과가 올 때까지 이전 결과를 그대로 두어 목록이 깜빡이지 않게 한다. 대신 그동안 "이 방법 적용"은 막는다.
+  const searchShown = !locked && message ? similar : null
+  const searchPending = !locked && message !== '' && similar?.query !== message
+  const matches = searchShown?.items ?? []
+
+  async function suggest(errorText: string, history: AttemptInput[]) {
     setLoading(true)
     setResult(null)
     // 해결된 시도는 다음 방법을 묻지 않으므로 실패·일부 해결만 보낸다
@@ -74,11 +93,11 @@ function SolvePage() {
       a.result === 'solved' ? [] : [{ action: a.action, result: a.result }],
     )
     // requestSuggestion은 실패해도 예외 없이 unavailable을 돌려준다
-    setResult(await requestSuggestion(message, previous))
+    setResult(await requestSuggestion(errorText, previous))
     setLoading(false)
   }
 
-  function buildErrorBody(message: string, choice: SeriesChoice): ErrorCreateBody {
+  function buildErrorBody(choice: SeriesChoice, attempts: AttemptInput[], summary: string | null): ErrorCreateBody {
     return {
       error_message: message,
       situation: situation.trim() || null,
@@ -86,114 +105,84 @@ function SolvePage() {
       new_series_name: choice.kind === 'new' ? choice.name : null,
       tag_ids: tagsValue.existingIds,
       new_tag_names: tagsValue.newNames,
+      attempts,
+      summary,
     }
   }
 
-  // "해결 방법 찾기": 먼저 비슷한 기존 기록을 찾는다 (A-003). 있으면 보여주고, 없거나 확인하지 못하면 바로 AI로 간다.
-  async function findSolution() {
-    const message = errorMessage.trim()
-    if (!message || locked || seriesChoice === null || busy.current) return
-    busy.current = true
-    setSearching(true)
+  // 저장에 성공했다: 결과 탭으로 가고, 입력은 이미 잠겨 있다. 이어서 AI 피드백을 받는다.
+  function showSaved(record: SavedError) {
+    setLocked(true)
+    setSaved(record)
+    setTab('result')
+    void feedback.request(record.id)
+  }
+
+  // "해당 없음 → AI에게 묻기": 입력을 잠그고 AI 제안 탭으로 가서 A-005를 부른다. 아무것도 저장하지 않는다.
+  function askAi() {
+    if (!message || locked || seriesChoice === null) return
+    setLocked(true)
+    setCollected([])
     setSaveError(null)
-    setSearchNotice(null)
     setApplyError(null)
-    setMatches(null)
-    const found = await searchSimilarErrors(message)
-    setSearching(false)
-    busy.current = false
-    if (found && found.length > 0) {
-      setMatches(found)
-      return
-    }
-    if (found === null) setSearchNotice(SEARCH_FAILED_NOTICE)
-    await saveAndAsk()
+    setTab('analysis')
+    void suggest(message, [])
   }
 
-  // 새 에러로 확정: A-002로 미해결 저장(D-025) → A-005 AI 제안. 이미 저장된 에러가 있으면 다시 저장하지 않는다.
-  async function saveAndAsk() {
-    const message = errorMessage.trim()
+  // "해결 안 됨 → 다음 방법 제안받기": 이번 시도를 화면 목록에 추가하고 이전 시도를 붙여 A-005를 다시 부른다 (D-027, 저장은 안 함)
+  function nextSuggestion(body: AttemptBody) {
+    const history = [...collected, { action: body.action, result: body.result }]
+    setCollected(history)
+    setSaveError(null)
+    void suggest(message, history)
+  }
+
+  // "기록 저장": 모아 둔 시도 + 이번 시도를 A-002로 저장한다. 실패하면 입력과 모은 시도를 그대로 두고 다시 누르면 다시 저장한다.
+  async function saveRecord(body: AttemptBody) {
     if (!message || seriesChoice === null || busy.current) return
     busy.current = true
     setSaving(true)
     setSaveError(null)
-    let error: SavedError
+    let record: SavedError
     try {
-      error = saved ?? (await createError(buildErrorBody(message, seriesChoice)))
+      const attempts = [...collected, { action: body.action, result: body.result }]
+      record = await createError(buildErrorBody(seriesChoice, attempts, body.summary))
     } catch (e) {
-      // 저장이 안 되면 AI로 넘어가지 않는다. 시도는 error_id가 있어야 저장되기 때문이다. 입력값은 그대로 둔다.
       setSaveError(e instanceof Error ? e.message : String(e))
       return
     } finally {
       setSaving(false)
       busy.current = false
     }
-    setSaved(error)
-    await askAi(error.error_message, [])
+    showSaved(record)
   }
 
-  // "해당 없음 → AI에게 묻기"
-  async function noMatch() {
-    setMatches(null)
-    setApplyError(null)
-    await saveAndAsk()
-  }
-
-  // "같은 에러예요, 이 방법 적용": 새 기록을 저장하고 고른 기록의 한 줄 정리를 복사해 해결됨으로 처리한 뒤 내 기록으로 간다 (D-041)
+  // "같은 에러예요, 이 방법 적용": 시도 1개(해결됨, 고른 기록의 한 줄 정리 복사)로 저장하고 결과 탭을 보여준다 (D-041 변경, D-064)
   async function applyMatch(match: SimilarError) {
-    const message = errorMessage.trim()
     if (!message || seriesChoice === null || busy.current) return
     busy.current = true
     setApplyingId(match.id)
     setApplyError(null)
+    let record: SavedError
     try {
-      // 저장은 됐는데 해결 처리가 실패한 뒤 다시 누르면 이미 저장한 에러를 이어서 쓴다
-      const error = saved ?? (await createError(buildErrorBody(message, seriesChoice)))
-      setSaved(error)
-      try {
-        await createAttempt(error.id, {
-          action: `기존 기록 #${match.id}의 해결 방법 적용`,
-          result: 'solved',
-          summary: match.summary,
-        })
-      } catch (e) {
-        // 이미 해결로 저장된 에러(응답만 놓친 경우)면 성공으로 본다
-        if (!(e instanceof AttemptSaveError && e.status === 409 && e.message.includes('이미 해결'))) throw e
-      }
+      record = await createError(
+        buildErrorBody(seriesChoice, [{ action: `기존 기록 #${match.id}의 해결 방법 적용`, result: 'solved' }], match.summary),
+      )
     } catch (e) {
       setApplyError(e instanceof Error ? `${e.message} 입력한 내용은 그대로 있어요.` : APPLY_FAILED)
-      setApplyingId(null)
-      busy.current = false
-      return
-    }
-    busy.current = false
-    navigate('/records')
-  }
-
-  async function saveAttempt(body: AttemptBody) {
-    if (!saved || busy.current) return
-    busy.current = true
-    setAttemptSaving(true)
-    setAttemptError(null)
-    let res
-    try {
-      res = await createAttempt(saved.id, body)
-    } catch (e) {
-      if (e instanceof AttemptSaveError && e.status === 409 && e.message.includes('이미 해결')) setClosed(true)
-      setAttemptError(e instanceof Error ? e.message : String(e))
       return
     } finally {
-      setAttemptSaving(false)
+      setApplyingId(null)
       busy.current = false
     }
-    const history = [...attempts, { seq: res.attempt.seq, action: res.attempt.action, result: res.attempt.result }]
-    setAttempts(history)
-    if (res.error.status === 'resolved') {
-      setResolvedSummary(res.error.summary ?? '')
-      return
-    }
-    // 해결 안 됨·일부 해결: 실패 시도를 붙여 다음 방법을 묻는다 (D-027, D-029)
-    await askAi(saved.error_message, history)
+    showSaved(record)
+  }
+
+  // 결과 탭에서 한 줄 정리를 고쳤다: 정리를 바꾸고 피드백을 다시 받아 덮어쓴다 (A-007 → A-016)
+  function summaryChanged(summary: string | null) {
+    if (!saved) return
+    setSaved({ ...saved, summary })
+    void feedback.request(saved.id)
   }
 
   function startNewError() {
@@ -203,55 +192,54 @@ function SolvePage() {
     setSituation('')
     setSeriesChoice({ kind: 'none' })
     setTagsValue(EMPTY_TAGS)
-    setSaved(null)
-    setSaveError(null)
-    setMatches(null)
-    setSearchNotice(null)
+    setLocked(false)
+    setSimilar(null)
     setApplyingId(null)
     setApplyError(null)
+    setLoading(false)
     setResult(null)
-    setAttempts([])
-    setAttemptError(null)
-    setClosed(false)
-    setResolvedSummary(null)
+    setCollected([])
+    setSaving(false)
+    setSaveError(null)
+    setSaved(null)
+    feedback.reset()
   }
+
+  const stateTabs: { tab: Tab; label: string }[] = [
+    { tab: 'input', label: '에러 입력' },
+    { tab: 'analysis', label: 'AI 제안 → 시도 기록' },
+    { tab: 'result', label: '결과' },
+  ]
 
   return (
     <>
       <h1 className="page-title">에러 해결</h1>
 
       <div className="tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          id="tab-input"
-          aria-selected={tab === 'input'}
-          aria-controls="panel-input"
-          className="tab"
-          onClick={() => setTab('input')}
-        >
-          에러 입력
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id="tab-analysis"
-          aria-selected={tab === 'analysis'}
-          aria-controls="panel-analysis"
-          className="tab"
-          onClick={() => setTab('analysis')}
-        >
-          AI 분석
-          {loading && <span className="tab-badge">분석 중…</span>}
-          {!loading && result && <span className="tab-badge done">완료</span>}
-        </button>
+        {stateTabs.map((t) => (
+          <button
+            key={t.tab}
+            type="button"
+            role="tab"
+            id={`tab-${t.tab}`}
+            aria-selected={tab === t.tab}
+            aria-controls={`panel-${t.tab}`}
+            className="tab"
+            onClick={() => setTab(t.tab)}
+          >
+            {t.label}
+            {t.tab === 'analysis' && loading && <span className="tab-badge">분석 중…</span>}
+            {t.tab === 'analysis' && !loading && result && !saved && <span className="tab-badge done">완료</span>}
+            {t.tab === 'result' && saved && <span className="tab-badge done">저장됨</span>}
+          </button>
+        ))}
       </div>
 
       {/* 탭을 바꿔도 선택이 남도록 언마운트하지 않고 숨긴다. 시안 ①처럼 에러 메시지 위에 둔다. */}
       <div hidden={tab !== 'input'} key={formKey}>
         {locked && (
           <p className="locked-notice">
-            저장된 에러예요. 내용을 바꾸려면 새 에러로 입력해 주세요.
+            {saved ? '저장한 에러예요.' : 'AI에게 물은 에러예요. 아직 저장하지 않았어요.'} 내용을 바꾸려면 새 에러로 입력해 주세요.
             <button type="button" className="btn-secondary" onClick={startNewError}>
               새 에러 입력
             </button>
@@ -276,8 +264,6 @@ function SolvePage() {
             readOnly={locked}
             onChange={(e) => {
               setErrorMessage(e.target.value)
-              // 메시지가 바뀌면 지금 보이는 비슷한 기록은 더 이상 맞지 않는다
-              setMatches(null)
               setApplyError(null)
             }}
           />
@@ -292,32 +278,39 @@ function SolvePage() {
             disabled={locked}
             onChange={(e) => setSituation(e.target.value)}
           />
-          {!locked && (
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={!errorMessage.trim() || searching || saving || applyingId !== null || seriesChoice === null}
-              onClick={findSolution}
-            >
-              {searching ? '검색 중…' : saving ? '저장 중…' : '해결 방법 찾기'}
-            </button>
+
+          {!locked && message && (
+            <div aria-live="polite">
+              {searchPending && <p className="hint">비슷한 기록을 찾는 중…</p>}
+              {!searchPending && searchShown?.items === null && <p className="hint">{SEARCH_FAILED_NOTICE}</p>}
+            </div>
           )}
-          {!locked && seriesChoice === null && <p className="hint">시리즈 이름을 확인해 주세요.</p>}
-          {saveError && <p className="save-error">{saveError} 입력한 내용은 그대로 있어요.</p>}
-          {searchNotice && <p className="hint">{searchNotice}</p>}
-          {matches && matches.length > 0 && (
+          {matches.length > 0 && (
             <SimilarRecords
               matches={matches}
               applyingId={applyingId}
-              busy={saving || applyingId !== null}
+              busy={searchPending || saving || applyingId !== null || seriesChoice === null}
               error={applyError}
               onApply={applyMatch}
-              onNone={noMatch}
             />
           )}
-          {(loading || result) && (
+
+          {!locked && (
+            <div className="similar-footer">
+              <button
+                type="button"
+                className="btn-ask-ai"
+                disabled={!message || seriesChoice === null || applyingId !== null}
+                onClick={askAi}
+              >
+                해당 없음 → AI에게 묻기
+              </button>
+            </div>
+          )}
+          {!locked && seriesChoice === null && <p className="hint">시리즈 이름을 확인해 주세요.</p>}
+          {locked && (loading || result) && !saved && (
             <p className="hint">
-              {loading ? 'AI가 분석하는 중이에요.' : '분석이 끝났어요.'} 결과는 위의 &quot;AI 분석&quot; 탭에서 볼 수 있어요.
+              {loading ? 'AI가 분석하는 중이에요.' : '분석이 끝났어요.'} 결과는 위의 &quot;AI 제안 → 시도 기록&quot; 탭에서 볼 수 있어요.
             </p>
           )}
         </section>
@@ -325,16 +318,16 @@ function SolvePage() {
 
       {tab === 'analysis' && (
         <section role="tabpanel" id="panel-analysis" aria-labelledby="tab-analysis">
-          {!saved && <p className="empty">아직 분석한 에러가 없어요. &quot;에러 입력&quot; 탭에서 에러를 입력해 주세요.</p>}
+          {!locked && <p className="empty">아직 AI에게 묻지 않았어요. &quot;에러 입력&quot; 탭에서 에러를 입력해 주세요.</p>}
 
-          {saved && <pre className="code-view">{saved.error_message}</pre>}
+          {locked && <pre className="code-view">{errorMessage}</pre>}
 
-          {attempts.length > 0 && (
-            <ul className="attempt-history" aria-label="저장한 시도">
-              {attempts.map((a) => (
-                <li key={a.seq}>
+          {collected.length > 0 && (
+            <ul className="attempt-history" aria-label="화면에 모아 둔 시도">
+              {collected.map((a, i) => (
+                <li key={i}>
                   <span className={`attempt-badge ${a.result}`}>
-                    시도 {a.seq} · {RESULT_LABELS[a.result]}
+                    시도 {i + 1} · {RESULT_LABELS[a.result]}
                   </span>
                   {a.action}
                 </li>
@@ -342,45 +335,51 @@ function SolvePage() {
             </ul>
           )}
 
-          {saved && resolvedSummary !== null && (
-            <ResolvedSummary
-              errorMessage={saved.error_message}
-              attemptCount={attempts.length}
-              tagNames={saved.tags.map((t) => t.name)}
-              seriesName={saved.series?.name ?? null}
-              summary={resolvedSummary}
-              onNewError={startNewError}
-            />
-          )}
-
-          {saved && resolvedSummary === null && (
+          {locked && !saved && (
             <>
               {loading && (
                 <p className="empty">
-                  {attempts.length ? '✨ AI가 다음 방법을 찾는 중이에요…' : '✨ AI가 에러를 분석하는 중이에요…'}
+                  {collected.length ? '✨ AI가 다음 방법을 찾는 중이에요…' : '✨ AI가 에러를 분석하는 중이에요…'}
                 </p>
               )}
-              {result?.status === 'unavailable' && attempts.length > 0 && (
-                <p className="attempt-notice">실패한 시도는 저장됐어요.</p>
+              {result?.status === 'unavailable' && collected.length > 0 && (
+                <p className="attempt-notice">시도는 화면에 모아 뒀어요. &quot;기록 저장&quot;을 누르면 함께 저장돼요.</p>
               )}
-              {result && (
-                <AiSuggestionCard result={result} retrying={loading} onRetry={() => askAi(saved.error_message, attempts)} />
-              )}
-              {closed ? (
-                <p className="attempt-error">{attemptError}</p>
-              ) : (
-                result &&
-                !loading && (
-                  <AttemptForm
-                    key={attempts.length + 1}
-                    seq={attempts.length + 1}
-                    saving={attemptSaving}
-                    error={attemptError}
-                    onSubmit={saveAttempt}
-                  />
-                )
+              {result && <AiSuggestionCard result={result} retrying={loading} onRetry={() => suggest(message, collected)} />}
+              {result && !loading && (
+                <AttemptForm
+                  key={collected.length + 1}
+                  seq={collected.length + 1}
+                  saving={saving}
+                  error={saveError}
+                  onSave={saveRecord}
+                  onNext={nextSuggestion}
+                />
               )}
             </>
+          )}
+
+          {saved && <p className="attempt-notice">기록을 저장했어요. 결과는 &quot;결과&quot; 탭에서 볼 수 있어요.</p>}
+        </section>
+      )}
+
+      {tab === 'result' && (
+        <section role="tabpanel" id="panel-result" aria-labelledby="tab-result">
+          {saved ? (
+            <>
+              <pre className="code-view">{saved.error_message}</pre>
+              <SaveResult
+                saved={saved}
+                feedback={feedback.feedback ?? null}
+                feedbackStatus={feedback.status}
+                onRequestFeedback={() => feedback.request(saved.id)}
+                onSummaryChanged={summaryChanged}
+                onNewError={startNewError}
+                onViewDiary={() => navigate(`/records/${saved.id}`)}
+              />
+            </>
+          ) : (
+            <p className="empty">아직 저장한 기록이 없어요.</p>
           )}
         </section>
       )}

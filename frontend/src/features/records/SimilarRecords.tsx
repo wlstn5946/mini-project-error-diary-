@@ -1,6 +1,7 @@
 import type { SimilarError } from './errorsApi'
 
 // 비슷한 기존 기록 (시안 에러해결창_예시.png ①). 시안의 "재사용 N회" 배지와 "에러 일기 보기" 버튼은 이번 범위에서 뺐다 (SCREEN-SPEC_4).
+// "해당 없음 → AI에게 묻기" 버튼은 입력창 쪽(SolvePage)에 하나만 둔다 (D-064).
 // 목록은 유사도 높은 순으로 오고, 위 두 개만 보이며 나머지는 스크롤로 본다 (CSS .similar-list).
 
 type Props = {
@@ -10,7 +11,6 @@ type Props = {
   busy: boolean
   error: string | null
   onApply: (match: SimilarError) => void
-  onNone: () => void
 }
 
 // "2026-11-02T15:40:00+09:00" → "11/2"
@@ -19,7 +19,7 @@ function shortDate(iso: string): string {
   return `${Number(month)}/${Number(day)}`
 }
 
-function SimilarRecords({ matches, applyingId, busy, error, onApply, onNone }: Props) {
+function SimilarRecords({ matches, applyingId, busy, error, onApply }: Props) {
   return (
     <>
       <section className="similar-box" aria-labelledby="similar-title">
@@ -60,11 +60,6 @@ function SimilarRecords({ matches, applyingId, busy, error, onApply, onNone }: P
         </div>
         {error && <p className="save-error">{error}</p>}
       </section>
-      <div className="similar-footer">
-        <button type="button" className="btn-ask-ai" disabled={busy} onClick={onNone}>
-          해당 없음 → AI에게 묻기
-        </button>
-      </div>
     </>
   )
 }

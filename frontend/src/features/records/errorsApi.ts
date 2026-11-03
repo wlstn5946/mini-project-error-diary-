@@ -1,7 +1,10 @@
 // 에러 등록 API 호출 (팀원 1). 컴포넌트에서 fetch를 직접 쓰지 않고 이 파일을 거친다.
 import { ApiError, GONE_OR_TAKEN, jsonInit, request } from '../../api'
 
-// A-002 POST /api/errors 요청 (API-SPEC_5 6절)
+// 화면에 모아 둔 시도 하나. 순서대로 seq 1부터 저장된다 (D-064)
+export type AttemptInput = { action: string; result: 'solved' | 'failed' | 'partial' }
+
+// A-002 POST /api/errors 요청 (API-SPEC_5 6절). "기록 저장" 때 에러와 시도를 한 번에 보낸다 (D-064)
 export type ErrorCreateBody = {
   error_message: string
   situation: string | null
@@ -10,6 +13,10 @@ export type ErrorCreateBody = {
   new_series_name: string | null
   tag_ids: number[]
   new_tag_names: string[]
+  // 1개 이상. 해결됨은 마지막 시도에만 올 수 있다
+  attempts: AttemptInput[]
+  // 내 한 줄 정리. 마지막 시도가 해결됨이면 필수, 그 밖에는 선택
+  summary: string | null
 }
 
 type NamedItem = { id: number; name: string }
@@ -20,8 +27,11 @@ export type SavedError = {
   error_message: string
   situation: string | null
   status: 'unresolved' | 'resolved'
+  summary: string | null
+  resolved_at: string | null
   series: NamedItem | null
   tags: NamedItem[]
+  attempts: { seq: number; action: string; result: 'solved' | 'failed' | 'partial'; created_at: string }[]
   created_at: string
 }
 
@@ -77,6 +87,8 @@ export async function listErrors(filters: ErrorFilters, signal?: AbortSignal): P
 export type ErrorDetail = ErrorListItem & {
   situation: string | null
   summary: string | null
+  // AI 피드백. 이전 기록이나 받기에 실패한 기록은 null (Q-003)
+  ai_feedback: string | null
   attempts: { seq: number; action: string; result: 'solved' | 'failed' | 'partial'; created_at: string }[]
 }
 
@@ -104,10 +116,11 @@ export type SimilarError = {
   resolved_at: string
 }
 
-// 비슷한 기록을 찾지 못해도 화면이 멈추지 않게, 실패하면 예외 대신 null을 돌려준다. 호출하는 쪽은 바로 AI로 넘어간다.
-export async function searchSimilarErrors(errorMessage: string): Promise<SimilarError[] | null> {
+// 비슷한 기록을 찾지 못해도 화면이 멈추지 않게, 실패하면 예외 대신 null을 돌려준다. 버튼은 계속 쓸 수 있다.
+// 입력 중 자동으로 부르므로 signal로 이전 요청을 취소할 수 있다. 취소돼도 null이라 부르는 쪽이 aborted를 확인해 무시한다 (D-064).
+export async function searchSimilarErrors(errorMessage: string, signal?: AbortSignal): Promise<SimilarError[] | null> {
   try {
-    const res = await request('/api/errors/search', jsonInit('POST', { error_message: errorMessage }))
+    const res = await request('/api/errors/search', jsonInit('POST', { error_message: errorMessage }, signal))
     return (await res.json()) as SimilarError[]
   } catch {
     return null
