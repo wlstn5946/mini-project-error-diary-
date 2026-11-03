@@ -3,10 +3,13 @@ import { Link } from 'react-router'
 import { ApiError } from '../../api'
 import type { ErrorListItem } from './errorsApi'
 import { RecordItemContent } from './RecordList'
+import ConfirmDialog from './ConfirmDialog'
+import SeriesCreateForm from './SeriesCreateForm'
 import SeriesEditForm from './SeriesEditForm'
-import { fetchSeries, listSeriesErrors, reorderSeries, type Series } from './seriesApi'
+import { deleteSeries, fetchSeries, listSeriesErrors, reorderSeries, type Series } from './seriesApi'
 
-// "시리즈별" 탭 (S-002, D-042). 시리즈 카드가 항상 위에 있고, 시리즈를 열면 그 아래에 시리즈 안 순서대로 기록 목록이 보인다.
+// "시리즈별" 탭 (S-002, D-042, D-061, D-062). 새 시리즈 만들기, 시리즈 이름·설명 수정·삭제도 여기서 한다.
+// 시리즈 카드가 항상 위에 있고, 시리즈를 열면 그 아래에 시리즈 안 순서대로 기록 목록이 보인다.
 // 시리즈 안 순서 번호는 목록 위치(1부터)로 보여준다. 빈 번호가 있어도 번호가 이어진다. (D-051)
 // 시리즈가 없는 기록은 이 탭에 나오지 않는다. (D-053)
 
@@ -15,7 +18,7 @@ type Props = {
   seriesId: number | null
   // 상세에서 "← 내 기록"으로 돌아올 주소 (이 탭과 연 시리즈 포함)
   backTo: string
-  // 값이 바뀌면 다시 불러온다 (관리 모달에서 이름·소속이 바뀐 뒤)
+  // 값이 바뀌면 다시 불러온다 (기록 목록이 바뀐 뒤)
   reloadSignal: number
   onOpen: (seriesId: number) => void
   onBack: () => void
@@ -26,6 +29,7 @@ type SeriesResult = { key: string; items: Series[] | null }
 type ErrorsResult = { key: string; items: ErrorListItem[] | null }
 
 const MOVE_FAILED = '순서를 바꾸지 못했어요. 다시 시도해 주세요.'
+const GONE = '이미 삭제된 항목이에요.'
 
 type DetailProps = {
   series: Series
@@ -33,14 +37,22 @@ type DetailProps = {
   onSeriesChanged: (series: Series) => void
   // 다른 곳에서 이미 지워진 시리즈
   onGone: () => void
+  // 시리즈를 지웠다. notice는 이미 지워져 있던 경우의 안내
+  onDeleted: (notice: string | null) => void
+  onNew: () => void
 }
 
-function SeriesDetail({ series, backTo, onSeriesChanged, onGone }: DetailProps) {
+function SeriesDetail({ series, backTo, onSeriesChanged, onGone, onDeleted, onNew }: DetailProps) {
   const [retry, setRetry] = useState(0)
   const [result, setResult] = useState<ErrorsResult | null>(null)
   const [editing, setEditing] = useState(false)
   const [moving, setMoving] = useState(false)
   const [moveError, setMoveError] = useState<string | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  // 삭제 확인 버튼을 빠르게 두 번 눌러도 요청은 한 번만 보낸다
+  const deleteBusy = useRef(false)
   // 화살표를 빠르게 여러 번 눌러도 요청은 하나씩만 보낸다
   const busy = useRef(false)
 
@@ -87,29 +99,37 @@ function SeriesDetail({ series, backTo, onSeriesChanged, onGone }: DetailProps) 
     }
   }
 
+  async function confirmDelete() {
+    if (deleteBusy.current) return
+    deleteBusy.current = true
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await deleteSeries(series.id)
+      onDeleted(null)
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) onDeleted(GONE)
+      else {
+        // 창은 열어 둔 채 안내만 바꾼다. 같은 버튼으로 다시 시도할 수 있다.
+        setDeleteError(err instanceof Error ? err.message : String(err))
+      }
+    } finally {
+      deleteBusy.current = false
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="series-detail">
-      {editing ? (
-        <SeriesEditForm
-          series={series}
-          onSaved={(updated) => {
-            setEditing(false)
-            onSeriesChanged(updated)
-          }}
-          onCancel={() => setEditing(false)}
-          onGone={onGone}
-        />
-      ) : (
-        <header className="series-header">
-          <div>
-            <h2 className="series-name">{series.name}</h2>
-            {series.description && <p className="series-desc">{series.description}</p>}
-          </div>
-          <button type="button" className="btn-secondary manage-btn" onClick={() => setEditing(true)}>
-            이름·설명 수정
-          </button>
-        </header>
-      )}
+      <header className="series-header">
+        <div>
+          <h2 className="series-name">{series.name}</h2>
+          {series.description && <p className="series-desc">{series.description}</p>}
+        </div>
+        <button type="button" className="btn-secondary manage-btn" onClick={onNew}>
+          + 새 시리즈
+        </button>
+      </header>
 
       <div aria-live="polite">{moveError && <p className="manage-error">{moveError}</p>}</div>
 
@@ -156,6 +176,55 @@ function SeriesDetail({ series, backTo, onSeriesChanged, onGone }: DetailProps) 
           ))}
         </ol>
       )}
+
+      {editing ? (
+        <SeriesEditForm
+          series={series}
+          onSaved={(updated) => {
+            setEditing(false)
+            onSeriesChanged(updated)
+          }}
+          onCancel={() => setEditing(false)}
+          onGone={onGone}
+        />
+      ) : (
+        <div className="series-actions">
+          <button type="button" className="btn-secondary manage-btn" onClick={() => setEditing(true)}>
+            시리즈 이름·설명 수정
+          </button>
+          <button
+            type="button"
+            className="btn-danger manage-btn"
+            onClick={() => {
+              setDeleteError(null)
+              setConfirmingDelete(true)
+            }}
+          >
+            시리즈 삭제
+          </button>
+        </div>
+      )}
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={`'${series.name}' 시리즈를 지울까요?`}
+          confirmLabel="삭제"
+          busyLabel="삭제 중…"
+          busy={deleting}
+          error={deleteError}
+          onConfirm={confirmDelete}
+          onCancel={() => {
+            setConfirmingDelete(false)
+            setDeleteError(null)
+          }}
+        >
+          <p className="confirm-text">
+            {series.error_count > 0
+              ? `${series.error_count}개 기록에서 시리즈가 비워져요. 기록은 지워지지 않아요.`
+              : '되돌릴 수 없어요.'}
+          </p>
+        </ConfirmDialog>
+      )}
     </div>
   )
 }
@@ -163,6 +232,9 @@ function SeriesDetail({ series, backTo, onSeriesChanged, onGone }: DetailProps) 
 function SeriesView({ seriesId, backTo, reloadSignal, onOpen, onBack }: Props) {
   const [retry, setRetry] = useState(0)
   const [result, setResult] = useState<SeriesResult | null>(null)
+  const [creating, setCreating] = useState(false)
+  // 이미 지워져 있던 시리즈를 지우려 했다는 안내
+  const [notice, setNotice] = useState<string | null>(null)
 
   const key = `${retry}|${reloadSignal}`
   const loading = result?.key !== key
@@ -183,6 +255,33 @@ function SeriesView({ seriesId, backTo, reloadSignal, onOpen, onBack }: Props) {
     )
   }
 
+  function created(newSeries: Series) {
+    setCreating(false)
+    setNotice(null)
+    setRetry((k) => k + 1) // 목록을 다시 받고
+    onOpen(newSeries.id) // 새 시리즈를 연다
+  }
+
+  function deleted(message: string | null) {
+    setNotice(message)
+    setRetry((k) => k + 1) // 카드 목록을 다시 받는다
+    onBack() // 시리즈 선택을 닫는다 (series_id 제거)
+  }
+
+  const createForm = creating && <SeriesCreateForm onCreated={created} onCancel={() => setCreating(false)} />
+
+  const guide = (
+    <aside className="series-guide">
+      <h3 className="series-guide-title">시리즈 지정 방법</h3>
+      <ul>
+        <li>시리즈별 탭에서 새로 만들기</li>
+        <li>에러 해결 창에서 에러를 입력할 때 시리즈를 고르거나 새로 만들기</li>
+        <li>에러 일기 상세에서 나중에 지정·변경·해제</li>
+        <li>에러 하나는 시리즈 하나에만 속하고, 지정하면 마지막 순서로 추가</li>
+      </ul>
+    </aside>
+  )
+
   if (loading) return <p className="record-state">불러오는 중…</p>
   if (result.items === null) {
     return (
@@ -196,7 +295,21 @@ function SeriesView({ seriesId, backTo, reloadSignal, onOpen, onBack }: Props) {
   }
 
   if (result.items.length === 0) {
-    return <p className="record-state">아직 시리즈가 없어요. 에러를 입력할 때 시리즈를 만들 수 있어요.</p>
+    return (
+      <>
+        <div aria-live="polite">{notice && <p className="manage-notice">{notice}</p>}</div>
+        <p className="record-state">
+          아직 시리즈가 없어요. 새 시리즈를 만들거나, 에러를 입력할 때 만들 수 있어요.
+          {!creating && (
+            <button type="button" className="btn-primary" onClick={() => setCreating(true)}>
+              + 새 시리즈
+            </button>
+          )}
+        </p>
+        {createForm}
+        {guide}
+      </>
+    )
   }
 
   // 시리즈 카드는 시리즈를 열어도 위에 그대로 두고, 연 시리즈만 강조한다 (시안 ③)
@@ -216,9 +329,18 @@ function SeriesView({ seriesId, backTo, reloadSignal, onOpen, onBack }: Props) {
   const series = seriesId === null ? null : result.items.find((s) => s.id === seriesId)
   return (
     <>
+      <div aria-live="polite">{notice && <p className="manage-notice">{notice}</p>}</div>
       {cards}
+      {createForm}
       {seriesId === null ? (
-        <p className="record-state">시리즈를 눌러 같은 주제의 에러를 순서대로 보세요.</p>
+        <p className="record-state">
+          시리즈를 눌러 같은 주제의 에러를 순서대로 보세요.
+          {!creating && (
+            <button type="button" className="btn-secondary" onClick={() => setCreating(true)}>
+              + 새 시리즈
+            </button>
+          )}
+        </p>
       ) : series ? (
         <SeriesDetail
           key={series.id}
@@ -226,6 +348,8 @@ function SeriesView({ seriesId, backTo, reloadSignal, onOpen, onBack }: Props) {
           backTo={backTo}
           onSeriesChanged={replaceSeries}
           onGone={() => setRetry((k) => k + 1)}
+          onDeleted={deleted}
+          onNew={() => setCreating(true)}
         />
       ) : (
         // 주소에 남은 예전 시리즈 ID이거나 다른 곳에서 지운 시리즈
@@ -236,14 +360,7 @@ function SeriesView({ seriesId, backTo, reloadSignal, onOpen, onBack }: Props) {
           </button>
         </p>
       )}
-      <aside className="series-guide">
-        <h3 className="series-guide-title">시리즈 지정 방법</h3>
-        <ul>
-          <li>에러 해결 창에서 에러를 입력할 때 시리즈를 고르거나 새로 만들기</li>
-          <li>에러 일기 상세에서 나중에 지정·변경·해제</li>
-          <li>에러 하나는 시리즈 하나에만 속하고, 지정하면 마지막 순서로 추가</li>
-        </ul>
-      </aside>
+      {guide}
     </>
   )
 }

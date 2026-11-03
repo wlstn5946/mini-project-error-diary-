@@ -31,9 +31,10 @@ def find_series_by_name(db: Session, name: str) -> Series | None:
     return db.scalars(query).first()
 
 
-def create_series(db: Session, name: str) -> Series:
-    """커밋은 호출하는 쪽에서 한다. 에러 저장과 한 트랜잭션으로 묶기 위해서다. (D-011)"""
-    series = Series(name=name.strip())
+def create_series(db: Session, name: str, description: str | None = None) -> Series:
+    """커밋은 호출하는 쪽에서 한다. 에러 저장과 한 트랜잭션으로 묶기 위해서다. (D-011)
+    description은 시리즈별 탭에서 새로 만들 때만 넘긴다. (D-061)"""
+    series = Series(name=name.strip(), description=description)
     db.add(series)
     db.flush()
     return series

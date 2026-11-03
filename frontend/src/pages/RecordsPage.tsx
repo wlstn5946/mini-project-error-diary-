@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 import { listErrors, type ErrorFilters, type ErrorListItem, type ErrorStatus } from '../features/records/errorsApi'
-import ManageModal, { type ManageResult } from '../features/records/ManageModal'
 import RecordFilters from '../features/records/RecordFilters'
 import RecordList from '../features/records/RecordList'
 import SeriesView from '../features/records/SeriesView'
+import { type TagManageResult } from '../features/records/TagManageModal'
 import TagView from '../features/records/TagView'
 import '../features/records/records.css'
 
 // S-002 내 기록 (R-005, D-035, SCREEN-SPEC_6). 담당 팀원 1 (D-039).
 // 필터 값은 URL 쿼리(?status=…&tag_id=…&q=…)에 둔다. 상세에 갔다가 뒤로 와도 필터가 남는다 (D-036).
-// "⚙ 관리"로 태그·시리즈 이름 변경·삭제 모달을 연다 (D-042).
+// 태그 관리는 태그별 탭, 시리즈 수정·삭제는 시리즈별 탭에서 한다 (D-062, D-063).
 // 탭은 날짜별 / 태그별 / 시리즈별이고 주소 쿼리(?view=tag, ?view=series&series_id=N)에 둔다 (D-042, D-055).
 // 태그별 탭은 고른 태그(tag_id)만으로 거르고, 시리즈별 탭에서는 검색·상태·태그 필터를 숨긴다.
 
@@ -48,9 +48,6 @@ function RecordsPage() {
   const [searchText, setSearchText] = useState(filters.q)
   const [reloadKey, setReloadKey] = useState(0)
   const [result, setResult] = useState<ListResult | null>(null)
-  const [managing, setManaging] = useState(false)
-  // 관리 모달에서 바뀐 게 있으면 올려서 태그 칩을 다시 불러온다
-  const [tagsVersion, setTagsVersion] = useState(0)
 
   const view: View = params.get('view') === 'series' ? 'series' : params.get('view') === 'tag' ? 'tag' : 'date'
   const seriesView = view === 'series'
@@ -156,12 +153,10 @@ function RecordsPage() {
     })
   }
 
-  function closeManage({ changed, deletedTagIds }: ManageResult) {
-    setManaging(false)
+  function closeTagManage({ changed, deletedTagIds }: TagManageResult) {
     if (!changed) return
-    // 태그 이름·시리즈 이름·소속이 바뀌었을 수 있어서 목록과 태그 칩을 다시 불러온다
+    // 태그 이름이 바뀌었을 수 있어서 목록을 다시 불러온다 (태그 칩은 태그별 탭이 직접 다시 받는다)
     setReloadKey((k) => k + 1)
-    setTagsVersion((v) => v + 1)
     // 지운 태그가 필터에 걸려 있으면 필터에서 뺀다 (없는 태그로 거르면 항상 빈 결과라서)
     if (deletedTagIds.some((id) => filters.tagIds.includes(id))) {
       const remaining = filters.tagIds.filter((id) => !deletedTagIds.includes(id))
@@ -208,9 +203,6 @@ function RecordsPage() {
     <>
       <div className="records-header">
         <h1 className="page-title">내 기록</h1>
-        <button type="button" className="btn-secondary" onClick={() => setManaging(true)}>
-          ⚙ 관리
-        </button>
       </div>
 
       <div className="view-tabs" role="tablist">
@@ -241,7 +233,7 @@ function RecordsPage() {
           tagIds={filters.tagIds}
           onToggleTag={toggleTag}
           resultCount={!loading && result.items ? result.items.length : null}
-          reloadSignal={tagsVersion}
+          onManageClosed={closeTagManage}
         >
           {filters.tagIds.length === 0 ? (
             <p className="record-state">위에서 태그를 눌러 기록을 모아 보세요.</p>
@@ -258,14 +250,12 @@ function RecordsPage() {
             onStatusChange={changeStatus}
             tagIds={filters.tagIds}
             onToggleTag={toggleTag}
-            reloadSignal={tagsVersion}
           />
 
           <div aria-live="polite">{recordListArea}</div>
         </>
       )}
 
-      {managing && <ManageModal onClose={closeManage} />}
     </>
   )
 }
