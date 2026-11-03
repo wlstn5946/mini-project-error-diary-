@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
-import { ApiError } from '../../api'
+import { ApiError } from './apiError'
 import type { ErrorListItem } from './errorsApi'
 import { RecordItemContent } from './RecordList'
 import SeriesEditForm from './SeriesEditForm'

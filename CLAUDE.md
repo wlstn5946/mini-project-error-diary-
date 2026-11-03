@@ -48,7 +48,7 @@
 |------|-----------|---------|-----------|
 | 팀원 1 (찾기·정리) | 에러 등록, 기존 기록 검색, 내 기록, 에러 일기 상세 (D-031) | R-001, R-002, R-005 | 백엔드: `backend/app/routers/records.py`, `backend/app/repositories/series.py`, `backend/app/repositories/tags.py`, `backend/app/repositories/errors.py` / 프론트: `frontend/src/features/records/`, `frontend/src/pages/RecordsPage.tsx`, `frontend/src/pages/RecordDetailPage.tsx` |
 | 팀원 2 (AI로 해결) | Gemini 연동, AI 제안, 시도 기록, 해결 처리 | R-003, R-004 | 백엔드: `backend/app/routers/solve.py`, `backend/app/repositories/attempts.py` / 프론트: `frontend/src/features/solve/` |
-| 공용 | 공용 파일, 공통 컴포넌트 | - | 백엔드: `backend/app/main.py`, `backend/app/config.py`, `backend/app/db.py`, `backend/app/models.py`, `backend/app/routers/health.py`, `backend/requirements.txt`, `.gitignore` / 프론트: `frontend/src/components/`, `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/main.tsx`, `frontend/src/index.css`, `frontend/vite.config.ts`, `frontend/src/pages/SolvePage.tsx`, `frontend/src/pages/NotFoundPage.tsx` |
+| 공용 | 공용 파일, 공통 컴포넌트 | - | 백엔드: `backend/app/main.py`, `backend/app/config.py`, `backend/app/db.py`, `backend/app/models.py`, `backend/app/routers/health.py`, `backend/requirements.txt`, `.gitignore` / 프론트: `frontend/src/components/`, `frontend/src/App.tsx`, `frontend/src/main.tsx`, `frontend/src/index.css`, `frontend/vite.config.ts`, `frontend/src/pages/SolvePage.tsx`, `frontend/src/pages/NotFoundPage.tsx` |
 
 - 프론트 폴더 구분은 D-012, `frontend/src/pages/`의 화면별 담당은 D-039를 따른다.
 - SQL은 라우터에 쓰지 않고 `backend/app/repositories/<테이블>.py`에만 둔다. (D-016)
@@ -70,7 +70,6 @@
   - 가상환경: `uv venv --python 3.12 .venv`
   - 설치: `uv pip install --python .venv\Scripts\python.exe -r requirements.txt`
   - 실행: `.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000`
-- 화면이 서버를 부르는 곳은 `frontend/src/api.ts`의 `request()` 한 곳이다. 기능별 `*Api.ts`는 `fetch`를 직접 쓰지 않고 `request()`를 거친다. (D-056)
 - 패키지를 추가하면 `requirements.txt`에 `==` 버전으로 고정한다.
 - 프론트 실행·빌드, 테스트 명령은 [결정 필요].
 

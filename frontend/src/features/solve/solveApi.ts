@@ -1,5 +1,4 @@
-// AI 제안·시도 기록 API 호출 (팀원 2). 컴포넌트에서 fetch를 직접 쓰지 않고 이 파일을 거친다. 서버 호출은 api.ts의 request()로 한다 (D-056).
-import { ApiError, jsonInit, request } from '../../api'
+// AI 제안·시도 기록 API 호출 (팀원 2). 컴포넌트에서 fetch를 직접 쓰지 않고 이 파일을 거친다.
 
 export type Confidence = '높음' | '보통' | '낮음'
 export type AttemptResult = 'solved' | 'failed' | 'partial' // D-028
@@ -27,11 +26,12 @@ export const UNAVAILABLE = '지금은 AI 분석을 가져오지 못했어요. �
 // A-005. 서버 꺼짐·네트워크 오류여도 예외를 던지지 않고 unavailable로 돌려준다. 화면이 멈추지 않게 하기 위해서다.
 export async function requestSuggestion(errorMessage: string, previousAttempts: PreviousAttempt[]): Promise<Suggestion> {
   try {
-    const res = await request(
-      '/api/ai-suggestions',
-      jsonInit('POST', { error_message: errorMessage, previous_attempts: previousAttempts }),
-      UNAVAILABLE,
-    )
+    const res = await fetch('/api/ai-suggestions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error_message: errorMessage, previous_attempts: previousAttempts }),
+    })
+    if (!res.ok) throw new Error(String(res.status))
     return (await res.json()) as Suggestion
   } catch {
     return { status: 'unavailable', confidence: null, cause: null, solutions: [], message: UNAVAILABLE }
@@ -46,13 +46,33 @@ export type AttemptSaved = {
   error: { id: number; status: 'unresolved' | 'resolved'; summary: string | null; resolved_at: string | null }
 }
 
-// 실패 이유를 화면에서 나눠 보여주려고 상태 코드를 함께 담는다 (409: 이미 해결된 에러 등). 공용 ApiError와 같다.
-export const AttemptSaveError = ApiError
+// 실패 이유를 화면에서 나눠 보여주려고 상태 코드를 함께 담는다 (409: 이미 해결된 에러 등)
+export class AttemptSaveError extends Error {
+  status: number | null
+
+  constructor(message: string, status: number | null) {
+    super(message)
+    this.status = status
+  }
+}
 
 const SAVE_FAILED = '시도를 저장하지 못했어요. 입력한 내용은 그대로 있으니 다시 시도해 주세요.'
 
-// A-006. 서버가 준 안내(409 "이미 해결된 에러예요." 등)가 있으면 그 문구를 그대로 쓴다.
+// A-006
 export async function createAttempt(errorId: number, body: AttemptBody): Promise<AttemptSaved> {
-  const res = await request(`/api/errors/${errorId}/attempts`, jsonInit('POST', body), SAVE_FAILED)
+  let res: Response
+  try {
+    res = await fetch(`/api/errors/${errorId}/attempts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    throw new AttemptSaveError(SAVE_FAILED, null)
+  }
+  if (!res.ok) {
+    const detail = await res.json().then((data) => data?.detail, () => null)
+    throw new AttemptSaveError(typeof detail === 'string' ? detail : SAVE_FAILED, res.status)
+  }
   return (await res.json()) as AttemptSaved
 }

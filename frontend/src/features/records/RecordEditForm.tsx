@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react'
-import { ApiError } from '../../api'
+import { ApiError } from './apiError'
 import { updateError, type ErrorDetail } from './errorsApi'
 import SeriesSelect, { type SeriesChoice } from './SeriesSelect'
 import TagInput, { type TagsValue } from './TagInput'
