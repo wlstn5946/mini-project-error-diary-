@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react'
+import StaleDot from '../../components/StaleDot'
 import { listErrors, type ErrorStatus } from './errorsApi'
 import { fetchTags, type Tag } from './tagsApi'
 
 // 내 기록 검색·필터 (S-002, 시안 내기록창 ①②). 값은 부모가 URL 쿼리로 들고 있다 (D-036).
+// 상태 칩 줄: 전체 / 미해결만 / 해결만 / 오래된 기록(미해결 + 등록 14일 이상, 빨간 불, D-078)
 
 type Props = {
   searchText: string
   onSearchTextChange: (text: string) => void
   status: ErrorStatus | null
   onStatusChange: (status: ErrorStatus | null) => void
+  // "오래된 기록" 칩이 켜져 있는가. 켜면 상태 칩은 모두 꺼진다
+  stale: boolean
+  onStaleChange: (stale: boolean) => void
   tagIds: number[]
   onToggleTag: (tagId: number) => void
   // 값이 바뀌면 태그 목록을 다시 불러온다 (관리 모달에서 태그를 바꾼 뒤)
@@ -28,6 +33,8 @@ function RecordFilters({
   onSearchTextChange,
   status,
   onStatusChange,
+  stale,
+  onStaleChange,
   tagIds,
   onToggleTag,
   reloadSignal = 0,
@@ -36,14 +43,15 @@ function RecordFilters({
   const [tags, setTags] = useState<Tag[]>([])
   const [reloadKey, setReloadKey] = useState(0)
   // 상태 칩 옆 개수 (시안 ①). 필터와 상관없는 전체 기록 기준이다. 못 불러오면 개수만 숨긴다.
-  const [counts, setCounts] = useState<Record<'all' | ErrorStatus, number> | null>(null)
+  const [counts, setCounts] = useState<Record<'all' | ErrorStatus | 'stale', number> | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
-    listErrors({ status: null, tagIds: [], q: '' }, controller.signal)
+    listErrors({ status: null, tagIds: [], q: '', stale: false }, controller.signal)
       .then((items) => {
         const resolved = items.filter((item) => item.status === 'resolved').length
-        setCounts({ all: items.length, resolved, unresolved: items.length - resolved })
+        const staleCount = items.filter((item) => item.is_stale).length
+        setCounts({ all: items.length, resolved, unresolved: items.length - resolved, stale: staleCount })
       })
       .catch(() => {
         if (!controller.signal.aborted) setCounts(null)
@@ -88,13 +96,25 @@ function RecordFilters({
             key={chip.label}
             type="button"
             className="filter-chip"
-            aria-pressed={status === chip.value}
+            aria-pressed={!stale && status === chip.value}
             onClick={() => onStatusChange(chip.value)}
           >
             {chip.label}
             {counts && <span className="chip-count">{counts[chip.value ?? 'all']}</span>}
           </button>
         ))}
+        {/* 해결만 바로 옆, 같은 모양의 칩. 오래된 기록이 있으면(개수 1 이상) 빨간 불이 깜빡인다 (D-078) */}
+        <button
+          type="button"
+          className="filter-chip stale-chip"
+          aria-pressed={stale}
+          title="미해결인 채로 14일 이상 지난 기록"
+          onClick={() => onStaleChange(!stale)}
+        >
+          {counts && counts.stale > 0 && <StaleDot label="오래된 기록이 있어요" />}
+          오래된 기록
+          {counts && <span className="chip-count">{counts.stale}</span>}
+        </button>
       </div>
 
       <div className="chip-row" role="group" aria-label="태그">

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router'
 import { getErrorStats, RECORDS_CHANGED_EVENT, type ErrorStats } from '../features/records/errorsApi'
+import StaleDot from './StaleDot'
 
 // 사이드바 대시보드 (시안 내기록창_예시.png의 "에러 기록 N개 · 해결 · 미해결 · 재사용 해결", D-074).
 // 한 칸에 한 줄씩 4칸이다. 에러 기록·해결·미해결은 누르면 내 기록의 전체·해결·미해결 보기로 간다.
@@ -16,6 +17,8 @@ type Row = {
   value: number | null
   // 없으면 누를 수 없는 표시 칸이다
   to?: string
+  // 1 이상이면 칸에 깜빡이는 빨간 불을 켠다: 14일 이상 지난 미해결 기록이 있다는 뜻이다 (D-078)
+  staleCount?: number
 }
 
 function SidebarStats() {
@@ -49,7 +52,14 @@ function SidebarStats() {
   const rows: Row[] = [
     { key: 'all', label: '에러 기록', unit: '개', value: stats?.total ?? null, to: '/records' },
     { key: 'resolved', label: '해결', unit: '개', value: stats?.resolved ?? null, to: '/records?status=resolved' },
-    { key: 'unresolved', label: '미해결', unit: '개', value: stats?.unresolved ?? null, to: '/records?status=unresolved' },
+    {
+      key: 'unresolved',
+      label: '미해결',
+      unit: '개',
+      value: stats?.unresolved ?? null,
+      to: '/records?status=unresolved',
+      staleCount: stats?.stale_unresolved ?? 0,
+    },
     { key: 'reuse', label: '재사용 해결', unit: '회', value: stats?.reused_resolved ?? null },
   ]
 
@@ -57,9 +67,13 @@ function SidebarStats() {
     <section className="sidebar-stats" aria-label="내 기록 통계">
       {rows.map((row) => {
         const text = row.value === null ? '-' : `${row.value}${row.unit}`
+        const stale = row.staleCount ?? 0
         const content = (
           <>
-            <span className="stat-label">{row.label}</span>
+            <span className="stat-label">
+              {stale > 0 && <StaleDot label={`14일 이상 지난 미해결 기록 ${stale}개`} />}
+              {row.label}
+            </span>
             <span className="stat-value">{text}</span>
           </>
         )
@@ -79,7 +93,7 @@ function SidebarStats() {
             to={row.to}
             className={`stat stat-${row.key}${active ? ' active' : ''}`}
             aria-current={active ? 'page' : undefined}
-            aria-label={`내 기록 ${row.label} 보기 · ${text}`}
+            aria-label={`내 기록 ${row.label} 보기 · ${text}${stale > 0 ? ` · 14일 이상 지난 미해결 기록 ${stale}개` : ''}`}
           >
             {content}
           </Link>

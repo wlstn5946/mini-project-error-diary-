@@ -3,17 +3,40 @@
 mark_resolved()는 팀원 2가 해결 처리(A-006)용으로 추가했다. (D-030)
 """
 
+from datetime import datetime, timedelta
 from typing import Literal
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from app.models import Attempt, ErrorRecord, ErrorTag, Tag, now_kst
+from app.models import KST, Attempt, ErrorRecord, ErrorTag, Tag, now_kst
 from app.repositories import attempts as attempts_repo
 
 # 비슷한 기록의 "이 방법 적용"이 남기는 시도 문구 (프론트 SolvePage의 applyMatch와 같게 유지한다, D-069).
 # "재사용 해결" 개수(사이드바 통계, D-074)를 이 문구로 센다.
 REUSE_ACTION_PATTERN = "기존 기록 #%의 해결 방법 적용"
+
+# 등록한 지 이만큼(일) 지난 미해결 기록은 "오래된 기록"이다. 14일 이상이면 해당한다. (D-078)
+STALE_DAYS = 14
+
+
+def stale_cutoff() -> str:
+    """이 시각 이전(같은 시각 포함)에 등록한 미해결 기록이 오래된 기록이다.
+
+    created_at은 모두 한국 시간 ISO 8601(+09:00)이라 문자열 비교가 시간순 비교와 같다. (D-015)
+    """
+    return (datetime.now(KST) - timedelta(days=STALE_DAYS)).isoformat(timespec="seconds")
+
+
+def is_stale(error: ErrorRecord, cutoff: str) -> bool:
+    """오래된 기록인가: 미해결이고 등록한 지 STALE_DAYS일 이상이다. cutoff는 stale_cutoff() 값이다."""
+    return error.status == "unresolved" and error.created_at <= cutoff
+
+
+def count_stale_unresolved(db: Session) -> int:
+    """오래된 미해결 기록 수. 사이드바 통계의 빨간 불(D-078)이 이 값이 1 이상일 때 켜진다."""
+    query = select(func.count()).where(ErrorRecord.status == "unresolved", ErrorRecord.created_at <= stale_cutoff())
+    return db.scalar(query) or 0
 
 
 def get_error(db: Session, error_id: int) -> ErrorRecord | None:
@@ -48,14 +71,18 @@ def list_errors(
     tag_ids: list[int],
     q: str | None,
     series_id: int | None = None,
+    stale: bool = False,
 ) -> list[ErrorRecord]:
     """내 기록 목록 (A-008). 최근 등록 순, 같으면 id가 큰 것이 먼저. tag_ids는 중복 없이 넘긴다.
 
     series_id가 있으면 그 시리즈의 에러만, 시리즈 안 순서(series_order)대로 돌려준다. (D-042, D-051)
+    stale이 True이면 오래된 기록(미해결 + 등록 14일 이상)만 돌려준다. (D-078)
     """
     query = select(ErrorRecord)
     if series_id is not None:
         query = query.where(ErrorRecord.series_id == series_id)
+    if stale:
+        query = query.where(ErrorRecord.status == "unresolved", ErrorRecord.created_at <= stale_cutoff())
     if status:
         query = query.where(ErrorRecord.status == status)
     if q:

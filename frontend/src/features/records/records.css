@@ -39,6 +39,13 @@
   font-weight: 700;
 }
 
+/* "오래된 기록" 칩: 다른 상태 칩과 같은 모양이고, 빨간 불이 있을 때 불과 글자 사이만 띄운다 (D-078) */
+.stale-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
 .filter-chip.tag[aria-pressed='true'] {
   border-color: #3730a3;
   background: #eef2ff;

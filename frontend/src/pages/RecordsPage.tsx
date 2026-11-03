@@ -31,10 +31,13 @@ function readFilters(params: URLSearchParams): ErrorFilters {
     .getAll('tag_id')
     .map(Number)
     .filter((id) => Number.isInteger(id) && id > 0)
+  // 오래된 기록(?stale=1)은 미해결만 뜻하므로 켜져 있으면 status는 쓰지 않는다 (D-078)
+  const stale = params.get('stale') === '1'
   return {
-    status: status === 'unresolved' || status === 'resolved' ? status : null,
+    status: !stale && (status === 'unresolved' || status === 'resolved') ? status : null,
     tagIds: [...new Set(tagIds)],
     q: (params.get('q') ?? '').trim(),
+    stale,
   }
 }
 
@@ -57,10 +60,10 @@ function RecordsPage() {
   const seriesId = seriesView && Number.isInteger(rawSeriesId) && rawSeriesId > 0 ? rawSeriesId : null
 
   // 태그별 탭은 고른 태그만으로 거른다. 날짜별 탭의 검색·상태 값이 주소에 남아 있어도 쓰지 않는다 (D-055).
-  const listFilters: ErrorFilters = tagView ? { status: null, tagIds: filters.tagIds, q: '' } : filters
+  const listFilters: ErrorFilters = tagView ? { status: null, tagIds: filters.tagIds, q: '', stale: false } : filters
   const key = JSON.stringify([listFilters, reloadKey, view])
   const loading = result?.key !== key
-  const hasFilters = filters.status !== null || filters.tagIds.length > 0 || filters.q !== ''
+  const hasFilters = filters.status !== null || filters.tagIds.length > 0 || filters.q !== '' || filters.stale
 
   // 필터를 바꿀 때마다 방문 기록이 쌓이지 않게 현재 주소를 바꾼다.
   // 이전 주소를 받아 고치므로, 검색 예약 사이에 바뀐 다른 필터를 덮지 않는다.
@@ -110,8 +113,22 @@ function RecordsPage() {
     return () => controller.abort()
   }, [key])
 
+  // 상태 칩을 누르면 "오래된 기록"은 꺼진다 (같은 줄의 칩 하나만 켜진다)
   function changeStatus(status: ErrorStatus | null) {
-    updateParams((next) => (status ? next.set('status', status) : next.delete('status')))
+    updateParams((next) => {
+      next.delete('stale')
+      if (status) next.set('status', status)
+      else next.delete('status')
+    })
+  }
+
+  // "오래된 기록" 칩: 켜면 상태 칩은 모두 꺼진다 (미해결 + 14일 이상, D-078)
+  function changeStale(stale: boolean) {
+    updateParams((next) => {
+      next.delete('status')
+      if (stale) next.set('stale', '1')
+      else next.delete('stale')
+    })
   }
 
   function toggleTag(tagId: number) {
@@ -128,6 +145,7 @@ function RecordsPage() {
     setSearchText('')
     updateParams((next) => {
       next.delete('status')
+      next.delete('stale')
       next.delete('tag_id')
       next.delete('q')
     })
@@ -182,7 +200,9 @@ function RecordsPage() {
       <p className="record-state">고른 태그를 모두 가진 기록이 없어요.</p>
     ) : hasFilters ? (
       <p className="record-state">
-        조건에 맞는 기록이 없어요.
+        {filters.stale && !filters.q && filters.tagIds.length === 0
+          ? '14일 이상 지난 미해결 기록이 없어요.'
+          : '조건에 맞는 기록이 없어요.'}
         <button type="button" className="btn-secondary" onClick={clearFilters}>
           필터 지우기
         </button>
@@ -248,6 +268,8 @@ function RecordsPage() {
             onSearchTextChange={setSearchText}
             status={filters.status}
             onStatusChange={changeStatus}
+            stale={filters.stale}
+            onStaleChange={changeStale}
             tagIds={filters.tagIds}
             onToggleTag={toggleTag}
           />
