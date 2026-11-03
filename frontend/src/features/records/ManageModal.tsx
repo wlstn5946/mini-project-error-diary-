@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import { ApiError } from './apiError'
+import { ApiError } from '../../api'
 import ConfirmDialog from './ConfirmDialog'
 import SeriesEditForm from './SeriesEditForm'
 import { deleteSeries, fetchSeries, type Series } from './seriesApi'
