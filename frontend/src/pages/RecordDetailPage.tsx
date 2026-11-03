@@ -12,6 +12,7 @@ import '../features/records/records.css'
 // S-003 에러 일기 상세 (/records/:id, D-037, SCREEN-SPEC_6). 담당 팀원 1 (D-031, D-039).
 // 기록 삭제(A-011, D-043)가 여기 있다. 확인 창을 거쳐 지우고 들어온 목록으로 돌아간다.
 // 기록 수정(A-010, D-047)은 같은 화면의 편집 모드다. 저장하면 응답으로 상세를 바꿔 보여준다.
+// 미해결 기록의 "이어서 해결하기"(D-075)는 /solve?retry={id}로 이동한다.
 // 한 줄 정리 수정(A-007)과 AI 피드백(A-016)은 features/solve/의 공용 컴포넌트를 쓴다 (D-064). 둘은 동시에 열지 않는다.
 
 // 응답이 어느 요청의 결과인지 key로 구분한다. 현재 key와 다르면 아직 불러오는 중이다.
@@ -158,6 +159,12 @@ function RecordDetailPage() {
                 />
               ) : (
                 <>
+                  {/* 미해결 기록만 에러 해결 화면에서 이어서 해결한다. 편집·정리 수정 중에는 버튼 줄이 숨겨져 같이 숨는다 (D-075) */}
+                  {detail.status === 'unresolved' && (
+                    <button type="button" className="btn-primary" onClick={() => navigate(`/solve?retry=${detail.id}`)}>
+                      이어서 해결하기
+                    </button>
+                  )}
                   <button type="button" className="btn-secondary" onClick={() => setEditing(true)}>
                     태그·시리즈·상황 수정
                   </button>

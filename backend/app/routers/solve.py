@@ -22,6 +22,7 @@ from app.config import GEMINI_API_KEY
 from app.db import get_db
 from app.repositories import attempts as attempts_repo
 from app.repositories import errors as errors_repo
+from app.repositories import series as series_repo  # A-006 응답용 읽기 (팀원 1 파일, 함수 추가 없음)
 
 router = APIRouter(tags=["solve"])
 logger = logging.getLogger(__name__)
@@ -186,57 +187,81 @@ def create_ai_suggestion(body: SuggestionRequest) -> SuggestionResponse:
     return SuggestionResponse(status="ok", **analysis.model_dump())
 
 
-class AttemptCreateRequest(BaseModel):
+class AttemptInput(BaseModel):
     action: str
     result: Literal["solved", "failed", "partial"]  # D-028
-    # 내 한 줄 정리. solved일 때만 필수이고, 그 밖에는 무시한다. (D-026)
+
+
+class AttemptsCreateRequest(BaseModel):
+    # 이번에 새로 한 시도만 보낸다. 기존 시도는 다시 보내지 않는다. 1개 이상 필수.
+    attempts: list[AttemptInput] = []
+    # 내 한 줄 정리. 마지막 시도가 solved이면 필수이고, 그 밖에는 선택이다. (D-067)
     summary: str | None = None
 
 
-class AttemptResponse(BaseModel):
+class NamedItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    error_id: int
+    name: str
+
+
+class SavedAttemptResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     seq: int
     action: str
     result: str
     created_at: str
 
 
-class ErrorStatusResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+class SavedErrorResponse(BaseModel):
+    """A-002 응답(ErrorCreatedResponse)과 같은 모양이다. 그래서 에러 해결 화면의 결과 탭을 그대로 쓴다."""
 
     id: int
+    error_message: str
+    situation: str | None
     status: str
     summary: str | None
     resolved_at: str | None
+    series: NamedItemResponse | None
+    tags: list[NamedItemResponse]
+    # 기존 시도와 이번에 저장한 시도를 합친 전체 (seq 오름차순)
+    attempts: list[SavedAttemptResponse]
+    created_at: str
 
 
-class AttemptCreatedResponse(BaseModel):
-    attempt: AttemptResponse
-    error: ErrorStatusResponse
-
-
-# A-006 시도 기록 (R-004). result=solved이면 같은 트랜잭션에서 해결 처리까지 한다. (D-026)
-# failed·partial이면 에러는 미해결로 둔다(D-029). 해결된 에러에는 시도를 추가하지 않는다(D-032).
-@router.post("/errors/{error_id}/attempts", response_model=AttemptCreatedResponse, status_code=201)
-def create_attempt(error_id: int, body: AttemptCreateRequest, db: Session = Depends(get_db)) -> AttemptCreatedResponse:
+# A-006 시도 기록 (R-004, D-076). 이미 저장된 미해결 에러에 시도를 이어서 붙인다 ("이어서 해결하기").
+# 마지막 시도가 solved이면 같은 트랜잭션에서 해결 처리까지 하고(D-026), 아니면 미해결로 둔다(D-029).
+# 해결된 에러에는 시도를 추가하지 않는다(D-032).
+@router.post("/errors/{error_id}/attempts", response_model=SavedErrorResponse, status_code=201)
+def create_attempts(error_id: int, body: AttemptsCreateRequest, db: Session = Depends(get_db)) -> SavedErrorResponse:
     error = errors_repo.get_error(db, error_id)
     if error is None:
         raise HTTPException(status_code=404, detail="없는 에러예요.")
     if error.status == "resolved":
         raise HTTPException(status_code=409, detail="이미 해결된 에러예요.")
-    action = body.action.strip()
-    if not action:
+
+    if not body.attempts:
+        raise HTTPException(status_code=422, detail="시도 기록이 1개 이상 있어야 저장할 수 있어요.")
+    new_attempts = [(a.action.strip(), a.result) for a in body.attempts]
+    if any(not action for action, _ in new_attempts):
         raise HTTPException(status_code=422, detail="무엇을 했는지 입력해 주세요.")
-    summary = (body.summary or "").strip()
-    if body.result == "solved" and not summary:
+    if any(result == "solved" for _, result in new_attempts[:-1]):
+        raise HTTPException(status_code=422, detail="해결됨은 마지막 시도에만 쓸 수 있어요.")  # A-002와 같은 문구 (D-066)
+    solved = new_attempts[-1][1] == "solved"
+    summary = (body.summary or "").strip() or None
+    if solved and summary is None:
         raise HTTPException(status_code=422, detail="해결됨으로 저장하려면 한 줄 정리를 입력해 주세요.")
 
-    attempt = attempts_repo.create_attempt(db, error.id, attempts_repo.next_seq(db, error.id), action, body.result)
-    if body.result == "solved":
+    # seq는 서버가 기존 시도 다음 번호부터 매긴다 (D-071, 함수 추가 없음)
+    first_seq = attempts_repo.next_seq(db, error.id)
+    for seq, (action, result) in enumerate(new_attempts, first_seq):
+        attempts_repo.create_attempt(db, error.id, seq, action, result)
+    if solved:
         errors_repo.mark_resolved(db, error, summary)
+    elif summary is not None:
+        errors_repo.set_summary(db, error, summary)  # 정리를 비워 보냈으면 기존 정리를 그대로 둔다 (D-067, D-072)
     try:
         db.commit()
     except IntegrityError:
@@ -244,9 +269,19 @@ def create_attempt(error_id: int, body: AttemptCreateRequest, db: Session = Depe
         db.rollback()
         raise HTTPException(status_code=409, detail="같은 시도가 동시에 저장됐어요. 다시 시도해 주세요.")
 
-    return AttemptCreatedResponse(
-        attempt=AttemptResponse.model_validate(attempt),
-        error=ErrorStatusResponse.model_validate(error),
+    series = series_repo.get_series(db, error.series_id) if error.series_id is not None else None
+    tags = errors_repo.get_tags_by_error_ids(db, [error.id]).get(error.id, [])
+    return SavedErrorResponse(
+        id=error.id,
+        error_message=error.error_message,
+        situation=error.situation,
+        status=error.status,
+        summary=error.summary,
+        resolved_at=error.resolved_at,
+        series=NamedItemResponse.model_validate(series) if series else None,
+        tags=[NamedItemResponse.model_validate(tag) for tag in tags],
+        attempts=[SavedAttemptResponse.model_validate(a) for a in attempts_repo.list_attempts(db, error.id)],
+        created_at=error.created_at,
     )
 
 

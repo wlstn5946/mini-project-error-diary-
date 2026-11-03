@@ -1,5 +1,6 @@
 // AI 제안·시도 기록·한 줄 정리·AI 피드백 API 호출 (팀원 2). 컴포넌트에서 fetch를 직접 쓰지 않고 이 파일을 거친다. 서버 호출은 api.ts의 request()로 한다 (D-056).
 import { ApiError, jsonInit, request } from '../../api'
+import { RECORDS_CHANGED_EVENT, type AttemptInput, type SavedError } from '../records/errorsApi'
 
 export type Confidence = '높음' | '보통' | '낮음'
 export type AttemptResult = 'solved' | 'failed' | 'partial' // D-028
@@ -63,10 +64,12 @@ export async function updateSummary(errorId: number, summary: string): Promise<s
 
 export type AttemptBody = { action: string; result: AttemptResult; summary: string | null }
 
-// A-006 응답 (201)
-export type AttemptSaved = {
-  attempt: { id: number; error_id: number; seq: number; action: string; result: AttemptResult; created_at: string }
-  error: { id: number; status: 'unresolved' | 'resolved'; summary: string | null; resolved_at: string | null }
+// A-006 요청 (API-SPEC). 이어서 해결할 때 이번에 새로 한 시도만 보낸다. 기존 시도는 다시 보내지 않고 seq는 서버가 매긴다 (D-076, D-077)
+export type AttemptsBody = {
+  // 1개 이상. 해결됨은 마지막 시도에만 올 수 있다
+  attempts: AttemptInput[]
+  // 내 한 줄 정리. 마지막 시도가 해결됨이면 필수, 그 밖에는 선택(비우면 기존 정리를 그대로 둔다)
+  summary: string | null
 }
 
 // 실패 이유를 화면에서 나눠 보여주려고 상태 코드를 함께 담는다 (409: 이미 해결된 에러 등). 공용 ApiError와 같다.
@@ -74,8 +77,12 @@ export const AttemptSaveError = ApiError
 
 const SAVE_FAILED = '시도를 저장하지 못했어요. 입력한 내용은 그대로 있으니 다시 시도해 주세요.'
 
-// A-006. 서버가 준 안내(409 "이미 해결된 에러예요." 등)가 있으면 그 문구를 그대로 쓴다.
-export async function createAttempt(errorId: number, body: AttemptBody): Promise<AttemptSaved> {
+// A-006. 성공하면 A-002 응답과 같은 모양(기존 시도 + 이번 시도 전체)을 돌려준다 (201).
+// 서버가 준 안내(409 "이미 해결된 에러예요." 등)가 있으면 그 문구를 그대로 쓴다.
+export async function createAttempts(errorId: number, body: AttemptsBody): Promise<SavedError> {
   const res = await request(`/api/errors/${errorId}/attempts`, jsonInit('POST', body), SAVE_FAILED)
-  return (await res.json()) as AttemptSaved
+  const saved = (await res.json()) as SavedError
+  // 상태가 바뀌었을 수 있어 사이드바 통계(D-074)가 숫자를 다시 불러오게 한다. errorsApi.ts(팀원 1)는 건드리지 않는다.
+  window.dispatchEvent(new Event(RECORDS_CHANGED_EVENT))
+  return saved
 }
