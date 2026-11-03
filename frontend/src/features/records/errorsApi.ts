@@ -1,5 +1,5 @@
 // 에러 등록 API 호출 (팀원 1). 컴포넌트에서 fetch를 직접 쓰지 않고 이 파일을 거친다.
-import { JSON_HEADERS, send } from './apiError'
+import { ApiError, GONE_OR_TAKEN, jsonInit, request } from '../../api'
 
 // A-002 POST /api/errors 요청 (API-SPEC_5 6절)
 export type ErrorCreateBody = {
@@ -27,22 +27,9 @@ export type SavedError = {
 
 const SAVE_FAILED = '에러를 저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.'
 
-// 실패하면 화면에 보여줄 문구를 담아 예외를 던진다. 서버가 준 안내 문구(detail 문자열)가 있으면 그것을 쓴다.
+// 실패하면 화면에 보여줄 문구를 담은 ApiError를 던진다. 서버가 준 안내 문구(detail 문자열)가 있으면 그것을 쓴다.
 export async function createError(body: ErrorCreateBody): Promise<SavedError> {
-  let res: Response
-  try {
-    res = await fetch('/api/errors', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-  } catch {
-    throw new Error(SAVE_FAILED)
-  }
-  if (!res.ok) {
-    const detail = await res.json().then((data) => data?.detail, () => null)
-    throw new Error(typeof detail === 'string' ? detail : SAVE_FAILED)
-  }
+  const res = await request('/api/errors', jsonInit('POST', body), SAVE_FAILED)
   return (await res.json()) as SavedError
 }
 
@@ -82,8 +69,7 @@ export async function listErrors(filters: ErrorFilters, signal?: AbortSignal): P
   for (const id of filters.tagIds) params.append('tag_id', String(id))
   if (filters.q.trim()) params.set('q', filters.q.trim())
   const query = params.toString()
-  const res = await fetch(`/api/errors${query ? `?${query}` : ''}`, { signal })
-  if (!res.ok) throw new Error(`GET /api/errors ${res.status}`)
+  const res = await request(`/api/errors${query ? `?${query}` : ''}`, { signal })
   return (await res.json()) as ErrorListItem[]
 }
 
@@ -96,10 +82,13 @@ export type ErrorDetail = ErrorListItem & {
 
 // A-009. 없는 ID(404)면 null을 돌려준다. 그 밖의 서버 오류·네트워크 오류는 예외를 던진다.
 export async function getError(id: number, signal?: AbortSignal): Promise<ErrorDetail | null> {
-  const res = await fetch(`/api/errors/${id}`, { signal })
-  if (res.status === 404) return null
-  if (!res.ok) throw new Error(`GET /api/errors/${id} ${res.status}`)
-  return (await res.json()) as ErrorDetail
+  try {
+    const res = await request(`/api/errors/${id}`, { signal })
+    return (await res.json()) as ErrorDetail
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null
+    throw err
+  }
 }
 
 // A-003 POST /api/errors/search 응답의 항목 (API-SPEC_5 6절). 해결된 기록만, 유사도 높은 순으로 온다.
@@ -118,12 +107,7 @@ export type SimilarError = {
 // 비슷한 기록을 찾지 못해도 화면이 멈추지 않게, 실패하면 예외 대신 null을 돌려준다. 호출하는 쪽은 바로 AI로 넘어간다.
 export async function searchSimilarErrors(errorMessage: string): Promise<SimilarError[] | null> {
   try {
-    const res = await fetch('/api/errors/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error_message: errorMessage }),
-    })
-    if (!res.ok) return null
+    const res = await request('/api/errors/search', jsonInit('POST', { error_message: errorMessage }))
     return (await res.json()) as SimilarError[]
   } catch {
     return null
@@ -143,11 +127,7 @@ const UPDATE_FAILED = '저장하지 못했어요. 잠시 뒤 다시 시도해 �
 
 // A-010. 성공하면 바뀐 상세(A-009 모양)를 돌려준다. 실패하면 화면에 보여줄 문구를 담은 ApiError를 던진다 (이미 삭제됨 404).
 export async function updateError(id: number, change: ErrorUpdateBody): Promise<ErrorDetail> {
-  const res = await send(
-    `/api/errors/${id}`,
-    { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(change) },
-    UPDATE_FAILED,
-  )
+  const res = await request(`/api/errors/${id}`, jsonInit('PATCH', change), UPDATE_FAILED, GONE_OR_TAKEN)
   return (await res.json()) as ErrorDetail
 }
 
@@ -155,15 +135,13 @@ export type DeleteResult = 'deleted' | 'not-found'
 
 const DELETE_FAILED = '기록을 지우지 못했어요. 잠시 뒤 다시 시도해 주세요.'
 
-// A-011 DELETE /api/errors/{id}. 이미 지워진 기록(404)은 'not-found'로 돌려주고, 그 밖의 실패는 화면에 보여줄 문구를 담아 예외를 던진다.
+// A-011 DELETE /api/errors/{id}. 이미 지워진 기록(404)은 'not-found'로 돌려주고, 그 밖의 실패는 화면에 보여줄 문구를 담은 ApiError를 던진다.
 export async function deleteError(id: number): Promise<DeleteResult> {
-  let res: Response
   try {
-    res = await fetch(`/api/errors/${id}`, { method: 'DELETE' })
-  } catch {
-    throw new Error(DELETE_FAILED)
+    await request(`/api/errors/${id}`, { method: 'DELETE' }, DELETE_FAILED)
+    return 'deleted'
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return 'not-found'
+    throw err
   }
-  if (res.status === 404) return 'not-found'
-  if (!res.ok) throw new Error(DELETE_FAILED)
-  return 'deleted'
 }
