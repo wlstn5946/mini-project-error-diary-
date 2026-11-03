@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import ConfirmDialog from '../features/records/ConfirmDialog'
 import { deleteError, getError, type ErrorDetail as Detail } from '../features/records/errorsApi'
 import ErrorDetail from '../features/records/ErrorDetail'
+import { downloadMarkdown, printRecord } from '../features/records/exportActions'
 import RecordEditForm from '../features/records/RecordEditForm'
 import FeedbackBox from '../features/solve/FeedbackBox'
 import SummaryEditForm from '../features/solve/SummaryEditForm'
@@ -14,6 +15,8 @@ import '../features/records/records.css'
 // 기록 수정(A-010, D-047)은 같은 화면의 편집 모드다. 저장하면 응답으로 상세를 바꿔 보여준다.
 // 미해결 기록의 "이어서 해결하기"(D-075)는 /solve?retry={id}로 이동한다.
 // 한 줄 정리 수정(A-007)과 AI 피드백(A-016)은 features/solve/의 공용 컴포넌트를 쓴다 (D-064). 둘은 동시에 열지 않는다.
+// 내보내기(D-079 예정): 화면이 이미 불러온 detail로 Markdown 내려받기·PDF(인쇄)를 한다. 버튼은 기존 버튼 줄에 있어서
+// 편집·정리 수정 중이나 삭제 중에는 같이 숨고, 저장하지 않은 편집 값은 내보내지 않는다.
 
 // 응답이 어느 요청의 결과인지 key로 구분한다. 현재 key와 다르면 아직 불러오는 중이다.
 // detail: 성공, null: 없는 ID(404), 'error': 불러오기 실패
@@ -40,6 +43,8 @@ function RecordDetailPage() {
   const [deleteFailure, setDeleteFailure] = useState<string | null>(null)
   // 다른 곳에서 이미 지워진 기록이었다 (삭제 요청이 404)
   const [gone, setGone] = useState(false)
+  // 내보내기에 실패한 기록의 ID. 다른 기록으로 옮기면 안내가 따라가지 않게 ID로 기억한다.
+  const [exportFailedId, setExportFailedId] = useState<number | null>(null)
   // 확인 버튼을 빠르게 두 번 눌러도 요청은 한 번만 보낸다
   const busy = useRef(false)
 
@@ -69,6 +74,17 @@ function RecordDetailPage() {
   function closeConfirm() {
     setConfirming(false)
     setDeleteFailure(null)
+  }
+
+  // 내려받기·인쇄가 예외를 던지면 버튼 근처에 안내를 보여준다
+  function exportRecord(kind: 'markdown' | 'pdf', target: Detail) {
+    try {
+      if (kind === 'markdown') downloadMarkdown(target)
+      else printRecord(target)
+      setExportFailedId(null)
+    } catch {
+      setExportFailedId(target.id)
+    }
   }
 
   async function confirmDelete() {
@@ -174,6 +190,22 @@ function RecordDetailPage() {
                   <button type="button" className="btn-danger" onClick={() => setConfirming(true)}>
                     삭제
                   </button>
+                  {/* 상세를 불러온 상태에서만 이 줄이 보이고, 삭제 중에는 숨긴다. 버튼 줄의 오른쪽 끝에 둔다 */}
+                  {!deleting && (
+                    <div className="export-buttons">
+                      <button type="button" className="btn-secondary" onClick={() => exportRecord('markdown', detail)}>
+                        Markdown 내려받기
+                      </button>
+                      <button type="button" className="btn-secondary" onClick={() => exportRecord('pdf', detail)}>
+                        PDF로 인쇄
+                      </button>
+                    </div>
+                  )}
+                  {exportFailedId === detail.id && (
+                    <p role="alert" className="edit-error">
+                      내보내지 못했어요. 다시 시도해 주세요.
+                    </p>
+                  )}
                 </>
               )
             }
