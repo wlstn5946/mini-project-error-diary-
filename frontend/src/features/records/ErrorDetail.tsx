@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { RESULT_LABELS } from '../solve/solveApi'
 import { STATUS_LABELS, type ErrorDetail as Detail } from './errorsApi'
 
@@ -5,6 +6,8 @@ import { STATUS_LABELS, type ErrorDetail as Detail } from './errorsApi'
 
 type Props = {
   detail: Detail
+  // 제목 줄 아래 버튼 영역(삭제, 이후 수정). 상태를 가진 쪽(페이지)이 채운다.
+  actions?: ReactNode
 }
 
 // 제목은 에러 메시지의 첫 줄 (목록과 같은 규칙)
@@ -18,7 +21,7 @@ function timeLabel(iso: string) {
   return `${m}월 ${d}일 ${iso.slice(11, 16)}`
 }
 
-function ErrorDetail({ detail }: Props) {
+function ErrorDetail({ detail, actions }: Props) {
   return (
     <article className="detail">
       <header className="detail-header">
@@ -35,6 +38,8 @@ function ErrorDetail({ detail }: Props) {
         ))}
       </p>
 
+      {actions && <div className="detail-actions">{actions}</div>}
+
       <pre className="code-view">{detail.error_message}</pre>
 
       {detail.situation && (
@@ -46,21 +51,23 @@ function ErrorDetail({ detail }: Props) {
 
       <section className="detail-section">
         <h3 className="detail-label">시도 기록</h3>
-        {detail.attempts.length === 0 ? (
-          <p className="hint">아직 기록한 시도가 없어요.</p>
-        ) : (
-          <ol className="detail-attempts">
-            {detail.attempts.map((attempt) => (
-              <li key={attempt.seq} className={`detail-attempt ${attempt.result}`}>
-                <span className={`attempt-result-badge ${attempt.result}`}>
-                  시도 {attempt.seq} · {RESULT_LABELS[attempt.result]}
-                </span>
-                <span className="detail-attempt-action">{attempt.action}</span>
-                <span className="detail-attempt-time">{timeLabel(attempt.created_at)}</span>
-              </li>
-            ))}
-          </ol>
-        )}
+        {/* 시도별 타임라인 (시안 ④): 에러 발생에서 시작해 시도 순서대로 */}
+        <ol className="timeline">
+          <li className="timeline-item start">
+            <span className="timeline-time">{timeLabel(detail.created_at)} · 에러 발생</span>
+            <span className="timeline-text">{firstLine(detail.error_message)}</span>
+          </li>
+          {detail.attempts.map((attempt) => (
+            <li key={attempt.seq} className={`timeline-item ${attempt.result}`}>
+              <span className="timeline-time">
+                {timeLabel(attempt.created_at)} · 시도 {attempt.seq}{' '}
+                <span className={`attempt-result-badge ${attempt.result}`}>{RESULT_LABELS[attempt.result]}</span>
+              </span>
+              <span className="timeline-text">{attempt.action}</span>
+            </li>
+          ))}
+        </ol>
+        {detail.attempts.length === 0 && <p className="hint">아직 기록한 시도가 없어요.</p>}
       </section>
 
       {/* 한 줄 정리는 해결된 에러만 */}

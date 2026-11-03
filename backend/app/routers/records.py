@@ -1,7 +1,7 @@
-"""팀원 1 (찾기·정리): A-002, A-003, A-004, A-008, A-009 (API-SPEC 5절).
+"""팀원 1 (찾기·정리): A-002, A-003, A-004, A-008, A-009, A-010, A-011, A-012, A-013, A-014 (API-SPEC 5절).
 
 경로는 /errors, /errors/search 처럼 전체 상대 경로로 적는다. prefix(/api)는 main.py에서 붙인다.
-이번 범위는 A-002(POST /errors), A-003(POST /errors/search), A-004(GET /series, GET /tags), A-008(GET /errors), A-009(GET /errors/{id})를 구현한다.
+이번 범위는 A-002(POST /errors), A-003(POST /errors/search), A-004(GET /series, GET /tags), A-008(GET /errors), A-009(GET /errors/{id}), A-010(PATCH /errors/{id}), A-011(DELETE /errors/{id}), A-012(PATCH·DELETE /tags/{id}), A-013(PATCH·DELETE /series/{id}), A-014(PUT /series/{id}/order)를 구현한다.
 A-003(/errors/search)은 A-009(/errors/{error_id})보다 위에 선언한다. 먼저 선언한 경로가 먼저 매칭되기 때문이다.
 SQL은 이 파일에 쓰지 않고 backend/app/repositories/에만 둔다. (D-016)
 """
@@ -11,10 +11,11 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import ErrorRecord, Tag
+from app.models import ErrorRecord, Series, Tag
 from app.repositories import attempts as attempts_repo
 from app.repositories import errors as errors_repo
 from app.repositories import series as series_repo
@@ -27,34 +28,50 @@ MIN_SIMILARITY = 60  # 유사도(%)가 이 값 이상인 기록만 비슷한 기
 
 
 class SeriesResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
     id: int
     name: str
     description: str | None
+    # 이 시리즈에 속한 에러 수. 시리즈 카드와 삭제 확인 창에 쓴다. (D-050)
+    error_count: int
     created_at: str
+
+
+def _series_response(series: Series, error_count: int) -> SeriesResponse:
+    return SeriesResponse(
+        id=series.id,
+        name=series.name,
+        description=series.description,
+        error_count=error_count,
+        created_at=series.created_at,
+    )
 
 
 # A-004 시리즈 목록 (R-001, D-006). 최근 만든 순, 없으면 빈 배열.
 @router.get("/series", response_model=list[SeriesResponse])
 def list_series(db: Session = Depends(get_db)) -> list[SeriesResponse]:
-    return [SeriesResponse.model_validate(series) for series in series_repo.list_series(db)]
+    counts = errors_repo.count_errors_by_series(db)
+    return [_series_response(series, counts.get(series.id, 0)) for series in series_repo.list_series(db)]
 
 
 class TagResponse(BaseModel):
     """비교용 name_key는 내보내지 않는다. 프론트가 같은 규칙으로 직접 비교한다. (API-SPEC A-004)"""
 
-    model_config = ConfigDict(from_attributes=True)
-
     id: int
     name: str
+    # 이 태그가 붙은 에러 수. 삭제 확인 창의 "N개 기록에서 빠져요"에 쓴다. (D-050)
+    error_count: int
     created_at: str
+
+
+def _tag_response(tag: Tag, error_count: int) -> TagResponse:
+    return TagResponse(id=tag.id, name=tag.name, error_count=error_count, created_at=tag.created_at)
 
 
 # A-004 태그 목록 (R-001, D-021). 자동 완성용 전체 목록, 이름순, 없으면 빈 배열.
 @router.get("/tags", response_model=list[TagResponse])
 def list_tags(db: Session = Depends(get_db)) -> list[TagResponse]:
-    return [TagResponse.model_validate(tag) for tag in tags_repo.list_tags(db)]
+    counts = errors_repo.count_errors_by_tag(db)
+    return [_tag_response(tag, counts.get(tag.id, 0)) for tag in tags_repo.list_tags(db)]
 
 
 class ErrorCreateRequest(BaseModel):
@@ -223,6 +240,8 @@ class ErrorListItem(BaseModel):
     error_message: str
     status: str
     series: NamedItem | None
+    # 시리즈 안 순서. 시리즈가 없으면 None. 화면은 이 값이 아니라 목록 위치를 순서 번호로 보여준다. (D-051)
+    series_order: int | None
     tags: list[NamedItem]
     attempt_count: int
     created_at: str
@@ -256,6 +275,7 @@ def _list_items(db: Session, errors: list[ErrorRecord]) -> list[ErrorListItem]:
             error_message=error.error_message,
             status=error.status,
             series=NamedItem.model_validate(series[error.series_id]) if error.series_id in series else None,
+            series_order=error.series_order,
             tags=[NamedItem.model_validate(tag) for tag in tags[error.id]],
             attempt_count=counts[error.id],
             created_at=error.created_at,
@@ -272,10 +292,12 @@ def list_errors(
     # 고른 태그를 모두 가진 에러만. 없는 태그 ID면 빈 결과다 (필터 결과로 본다).
     tag_id: list[int] = Query(default=[]),
     q: str | None = Query(default=None, max_length=200),
+    # 그 시리즈의 에러만, 시리즈 안 순서대로. 없는 시리즈 ID면 빈 결과다. (D-042, D-051)
+    series_id: int | None = None,
     db: Session = Depends(get_db),
 ) -> list[ErrorListItem]:
     keyword = (q or "").strip() or None
-    errors = errors_repo.list_errors(db, status, list(dict.fromkeys(tag_id)), keyword)
+    errors = errors_repo.list_errors(db, status, list(dict.fromkeys(tag_id)), keyword, series_id)
     return _list_items(db, errors)
 
 
@@ -292,3 +314,165 @@ def get_error_detail(error_id: int, db: Session = Depends(get_db)) -> ErrorDetai
         summary=error.summary,
         attempts=[AttemptItem.model_validate(attempt) for attempt in attempts_repo.list_attempts(db, error.id)],
     )
+
+
+class ErrorUpdateRequest(BaseModel):
+    """보낸 필드만 바꾼다. error_message는 받지 않는다(보내도 무시). 시리즈는 series_id와 new_series_name 중 하나만."""
+
+    situation: str | None = None
+    series_id: int | None = None
+    new_series_name: str | None = None
+    tag_ids: list[int] | None = None
+    new_tag_names: list[str] | None = None
+
+
+# A-010 기록 수정 (R-005, D-047, D-048). 태그·시리즈·상황만 고친다. 먼저 모두 검사하고 한 트랜잭션으로 바꾼다.
+@router.patch("/errors/{error_id}", response_model=ErrorDetailResponse)
+def update_error(error_id: int, body: ErrorUpdateRequest, db: Session = Depends(get_db)) -> ErrorDetailResponse:
+    error = errors_repo.get_error(db, error_id)
+    if error is None:
+        raise HTTPException(status_code=404, detail="에러 기록을 찾을 수 없어요.")
+    sent = body.model_fields_set
+
+    set_situation = "situation" in sent
+    situation = (body.situation or "").strip() or None
+
+    if body.series_id is not None and body.new_series_name is not None:
+        raise _invalid("시리즈는 series_id와 new_series_name 중 하나만 보내 주세요.")
+    set_series = "series_id" in sent or "new_series_name" in sent
+    series = None
+    new_series_name = None
+    if body.series_id is not None:
+        series = series_repo.get_series(db, body.series_id)
+        if series is None:
+            raise _invalid("없는 시리즈예요.")
+    elif body.new_series_name is not None:
+        new_series_name = body.new_series_name.strip()
+        if not new_series_name:
+            raise _invalid("새 시리즈 이름이 비어 있어요.")
+        series = series_repo.find_series_by_name(db, new_series_name)
+
+    tags = None
+    new_tag_names: list[str] = []
+    if "tag_ids" in sent or "new_tag_names" in sent:
+        tags, new_tag_names = _resolve_tags(db, body.tag_ids or [], body.new_tag_names or [])
+
+    if series is None and new_series_name:
+        series = series_repo.create_series(db, new_series_name)
+    if tags is not None:
+        tags += [tags_repo.create_tag(db, name) for name in new_tag_names]
+    errors_repo.update_error(
+        db,
+        error,
+        set_situation=set_situation,
+        situation=situation,
+        set_series=set_series,
+        series_id=series.id if series else None,
+        tag_ids=[tag.id for tag in tags] if tags is not None else None,
+    )
+    db.commit()
+    return get_error_detail(error_id, db)
+
+
+# A-011 기록 삭제 (R-005, D-043, D-044). 시도·태그 연결까지 한 트랜잭션으로 지운다. 쓰이지 않게 된 태그·시리즈는 남긴다. (D-046)
+@router.delete("/errors/{error_id}", status_code=204)
+def delete_error(error_id: int, db: Session = Depends(get_db)) -> None:
+    error = errors_repo.get_error(db, error_id)
+    if error is None:
+        raise HTTPException(status_code=404, detail="에러 기록을 찾을 수 없어요.")
+    errors_repo.delete_error(db, error)
+    db.commit()
+
+
+NAME_TAKEN = "이미 있는 이름이에요."  # D-049
+
+
+class TagRenameRequest(BaseModel):
+    name: str
+
+
+# A-012 태그 이름 변경 (R-005, D-019, D-049). 같은 이름(정규화 후 같은 name_key)이 다른 태그에 있으면 409.
+@router.patch("/tags/{tag_id}", response_model=TagResponse)
+def rename_tag(tag_id: int, body: TagRenameRequest, db: Session = Depends(get_db)) -> TagResponse:
+    tag = tags_repo.get_tag(db, tag_id)
+    if tag is None:
+        raise HTTPException(status_code=404, detail="태그를 찾을 수 없어요.")
+    name = tags_repo.normalize_tag_name(body.name)
+    if not name:
+        raise _invalid("태그 이름을 입력해 주세요.")
+    if tags_repo.find_other_tag_by_key(db, name.lower(), tag.id) is not None:
+        raise HTTPException(status_code=409, detail=NAME_TAKEN)
+    tags_repo.rename_tag(db, tag, name)
+    try:
+        db.commit()
+    except IntegrityError:
+        # 확인한 뒤 다른 요청이 같은 이름을 먼저 저장한 경우(name_key UNIQUE)
+        db.rollback()
+        raise HTTPException(status_code=409, detail=NAME_TAKEN)
+    return _tag_response(tag, errors_repo.count_errors_by_tag(db).get(tag.id, 0))
+
+
+# A-012 태그 삭제 (R-005, D-050). 쓰이는 태그도 지울 수 있고, 에러 연결만 지워진다. 에러는 남는다.
+@router.delete("/tags/{tag_id}", status_code=204)
+def delete_tag(tag_id: int, db: Session = Depends(get_db)) -> None:
+    tag = tags_repo.get_tag(db, tag_id)
+    if tag is None:
+        raise HTTPException(status_code=404, detail="태그를 찾을 수 없어요.")
+    tags_repo.delete_tag(db, tag)
+    db.commit()
+
+
+class SeriesUpdateRequest(BaseModel):
+    # 보낸 필드만 바꾼다. description은 null로 보내면 설명을 지운다(보내지 않으면 그대로).
+    name: str | None = None
+    description: str | None = None
+
+
+# A-013 시리즈 이름·설명 변경 (R-005, D-017, D-049, D-054)
+@router.patch("/series/{series_id}", response_model=SeriesResponse)
+def update_series(series_id: int, body: SeriesUpdateRequest, db: Session = Depends(get_db)) -> SeriesResponse:
+    series = series_repo.get_series(db, series_id)
+    if series is None:
+        raise HTTPException(status_code=404, detail="시리즈를 찾을 수 없어요.")
+    sent = body.model_fields_set
+    if "name" in sent:
+        name = (body.name or "").strip()
+        if not name:
+            raise _invalid("시리즈 이름을 입력해 주세요.")
+        if series_repo.find_other_series_by_name(db, name, series.id) is not None:
+            raise HTTPException(status_code=409, detail=NAME_TAKEN)
+        series_repo.rename_series(db, series, name)
+    if "description" in sent:
+        series_repo.set_description(db, series, (body.description or "").strip() or None)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=NAME_TAKEN)
+    return _series_response(series, errors_repo.count_errors_by_series(db).get(series.id, 0))
+
+
+# A-013 시리즈 삭제 (R-005, D-050). 속한 에러의 소속만 비워지고 에러는 남는다.
+@router.delete("/series/{series_id}", status_code=204)
+def delete_series(series_id: int, db: Session = Depends(get_db)) -> None:
+    series = series_repo.get_series(db, series_id)
+    if series is None:
+        raise HTTPException(status_code=404, detail="시리즈를 찾을 수 없어요.")
+    series_repo.delete_series(db, series)
+    db.commit()
+
+
+class SeriesOrderRequest(BaseModel):
+    # 그 시리즈의 에러 ID 전체를 원하는 순서대로
+    error_ids: list[int]
+
+
+# A-014 시리즈 안 순서 바꾸기 (R-005, D-051). 전체를 바꿔 끼운다. ID가 그 시리즈의 에러와 정확히 같지 않으면 422.
+@router.put("/series/{series_id}/order", response_model=list[ErrorListItem])
+def reorder_series(series_id: int, body: SeriesOrderRequest, db: Session = Depends(get_db)) -> list[ErrorListItem]:
+    if series_repo.get_series(db, series_id) is None:
+        raise HTTPException(status_code=404, detail="시리즈를 찾을 수 없어요.")
+    if not errors_repo.reorder_series(db, series_id, body.error_ids):
+        raise _invalid("순서를 바꿀 기록이 시리즈의 기록과 맞지 않아요. 화면을 새로 고쳐 주세요.")
+    db.commit()
+    return _list_items(db, errors_repo.list_errors(db, None, [], None, series_id))

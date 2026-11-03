@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ErrorStatus } from './errorsApi'
+import { listErrors, type ErrorStatus } from './errorsApi'
 import { fetchTags, type Tag } from './tagsApi'
 
 // 내 기록 검색·필터 (S-002, 시안 내기록창 ①②). 값은 부모가 URL 쿼리로 들고 있다 (D-036).
@@ -11,6 +11,8 @@ type Props = {
   onStatusChange: (status: ErrorStatus | null) => void
   tagIds: number[]
   onToggleTag: (tagId: number) => void
+  // 값이 바뀌면 태그 목록을 다시 불러온다 (관리 모달에서 태그를 바꾼 뒤)
+  reloadSignal?: number
 }
 
 type TagStatus = 'loading' | 'ready' | 'error'
@@ -21,10 +23,33 @@ const STATUS_CHIPS: { value: ErrorStatus | null; label: string }[] = [
   { value: 'resolved', label: '해결만' },
 ]
 
-function RecordFilters({ searchText, onSearchTextChange, status, onStatusChange, tagIds, onToggleTag }: Props) {
+function RecordFilters({
+  searchText,
+  onSearchTextChange,
+  status,
+  onStatusChange,
+  tagIds,
+  onToggleTag,
+  reloadSignal = 0,
+}: Props) {
   const [tagStatus, setTagStatus] = useState<TagStatus>('loading')
   const [tags, setTags] = useState<Tag[]>([])
   const [reloadKey, setReloadKey] = useState(0)
+  // 상태 칩 옆 개수 (시안 ①). 필터와 상관없는 전체 기록 기준이다. 못 불러오면 개수만 숨긴다.
+  const [counts, setCounts] = useState<Record<'all' | ErrorStatus, number> | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    listErrors({ status: null, tagIds: [], q: '' }, controller.signal)
+      .then((items) => {
+        const resolved = items.filter((item) => item.status === 'resolved').length
+        setCounts({ all: items.length, resolved, unresolved: items.length - resolved })
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCounts(null)
+      })
+    return () => controller.abort()
+  }, [reloadSignal])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -38,7 +63,7 @@ function RecordFilters({ searchText, onSearchTextChange, status, onStatusChange,
         if (!controller.signal.aborted) setTagStatus('error')
       })
     return () => controller.abort()
-  }, [reloadKey])
+  }, [reloadKey, reloadSignal])
 
   function reloadTags() {
     setTagStatus('loading')
@@ -67,6 +92,7 @@ function RecordFilters({ searchText, onSearchTextChange, status, onStatusChange,
             onClick={() => onStatusChange(chip.value)}
           >
             {chip.label}
+            {counts && <span className="chip-count">{counts[chip.value ?? 'all']}</span>}
           </button>
         ))}
       </div>
@@ -91,6 +117,7 @@ function RecordFilters({ searchText, onSearchTextChange, status, onStatusChange,
               onClick={() => onToggleTag(tag.id)}
             >
               #{tag.name}
+              <span className="chip-count">{tag.error_count}</span>
             </button>
           ))}
       </div>

@@ -1,9 +1,10 @@
-"""팀원 1 (찾기·정리): series 테이블 조회·생성. SQL은 라우터에 쓰지 않고 이 파일에만 둔다. (D-016)"""
+"""팀원 1 (찾기·정리): series 테이블 조회·생성·수정·삭제. SQL은 라우터에 쓰지 않고 이 파일에만 둔다. (D-016)"""
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Series
+from app.repositories import errors as errors_repo
 
 
 def list_series(db: Session) -> list[Series]:
@@ -36,3 +37,29 @@ def create_series(db: Session, name: str) -> Series:
     db.add(series)
     db.flush()
     return series
+
+
+def find_other_series_by_name(db: Session, name: str, exclude_id: int) -> Series | None:
+    """이름을 바꿀 때 같은 이름(공백 제외·대소문자 무시)을 가진 **다른** 시리즈가 있는지 찾는다. (D-017, D-049)"""
+    key = name.strip().lower()
+    query = select(Series).where(func.lower(func.trim(Series.name)) == key, Series.id != exclude_id).limit(1)
+    return db.scalars(query).first()
+
+
+def rename_series(db: Session, series: Series, name: str) -> None:
+    """커밋은 호출하는 쪽에서 한다."""
+    series.name = name.strip()
+    db.flush()
+
+
+def set_description(db: Session, series: Series, description: str | None) -> None:
+    """설명을 바꾼다. 비우면 None이다. (D-054) 커밋은 호출하는 쪽에서 한다."""
+    series.description = description
+    db.flush()
+
+
+def delete_series(db: Session, series: Series) -> None:
+    """속한 에러의 소속을 먼저 비우고 시리즈를 지운다. 에러는 남는다. (D-044, D-050)"""
+    errors_repo.clear_series(db, series.id)
+    db.delete(series)
+    db.flush()
