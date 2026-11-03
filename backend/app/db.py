@@ -1,31 +1,20 @@
-"""공용: DB 연결과 테이블 생성 (DATA-MODEL_N.md). 개발 중에는 SQLite, 이후 PostgreSQL로 전환한다. (D-009)"""
+"""공용: DB 연결과 테이블 생성 (DATA-MODEL_N.md). DB는 PostgreSQL이다(로컬, 이후 Supabase). (D-057, D-058, D-059)"""
 
 from collections.abc import Iterator
 
-from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from app.config import DATABASE_PATH
+from app.config import DATABASE_URL
 
-# FastAPI는 일반 함수 라우터를 여러 스레드에서 실행하므로 SQLite의 같은 스레드 검사를 끈다.
-engine = create_engine(
-    f"sqlite:///{DATABASE_PATH.as_posix()}",
-    connect_args={"check_same_thread": False},
-)
+# DB 서버를 다시 켰거나 원격(Supabase) 연결이 끊긴 경우를 위해 꺼내기 전에 확인한다.
+# Supabase transaction pooler(6543 포트)는 prepared statement를 지원하지 않아 psycopg의 자동 준비를 끈다.
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args={"prepare_threshold": None})
 SessionLocal = sessionmaker(bind=engine)
 
 
 class Base(DeclarativeBase):
     pass
-
-
-@event.listens_for(engine, "connect")
-def _enable_foreign_keys(dbapi_connection, _connection_record) -> None:
-    # SQLite는 외래 키 검사가 기본으로 꺼져 있고 연결마다 켜야 한다. PostgreSQL과 같은 동작을 맞추기 위해서다.
-    if engine.dialect.name == "sqlite":
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON")
-        cursor.close()
 
 
 def get_db() -> Iterator[Session]:
@@ -63,7 +52,7 @@ def _add_missing_columns() -> set[tuple[str, str]]:
 def _backfill_series_order() -> None:
     """series_order 컬럼을 방금 추가했을 때, 이미 시리즈에 속한 에러에 그 시리즈 안 순서를 채운다. (D-051, D-052)
 
-    created_at 오름차순(같으면 id 오름차순)으로 1부터 센다. 윈도 함수 대신 세어서 SQLite와 PostgreSQL에서 같게 동작한다.
+    created_at 오름차순(같으면 id 오름차순)으로 1부터 센다.
     """
     with engine.begin() as conn:
         conn.execute(
@@ -85,7 +74,6 @@ def init_db() -> None:
     """없는 테이블을 만들고, 이미 있는 테이블에는 없는 컬럼만 추가한다. 그 밖의 구조는 바꾸지 않는다. (D-014, D-052)"""
     from app import models  # noqa: F401  테이블 정의를 Base에 등록한다
 
-    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(engine)
     added = _add_missing_columns()
     if ("errors", "series_order") in added:
