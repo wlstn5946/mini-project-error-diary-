@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import {
   createError,
   searchSimilarErrors,
@@ -15,14 +15,26 @@ import TagInput, { type TagsValue } from '../features/records/TagInput'
 import AiSuggestionCard from '../features/solve/AiSuggestionCard'
 import AttemptForm from '../features/solve/AttemptForm'
 import SaveResult from '../features/solve/SaveResult'
-import { requestSuggestion, RESULT_LABELS, type AttemptBody, type PreviousAttempt, type Suggestion } from '../features/solve/solveApi'
+import { PreviousAttempts, ReadOnlyLabels, RetryNotice } from '../features/solve/RetryParts'
+import {
+  createAttempts,
+  requestSuggestion,
+  RESULT_LABELS,
+  type AttemptBody,
+  type PreviousAttempt,
+  type Suggestion,
+} from '../features/solve/solveApi'
 import { useFeedback } from '../features/solve/useFeedback'
+import { parseRetryId, useRetryRecord, type RetryState } from '../features/solve/useRetryRecord'
 import '../features/solve/solve.css'
 
 // S-001 에러 해결 (R-001 ~ R-004, SCREEN-SPEC_7). 탭은 에러 입력 / AI 제안 → 시도 기록 / 결과 3개다 (D-064).
 // 에러 메시지 입력이 멈추면 A-003으로 비슷한 기록을 자동으로 찾는다. "해당 없음 → AI에게 묻기"를 누르면 입력을 잠그고 A-005로 간다.
 // 에러와 시도는 화면에만 모아 두고, "기록 저장"을 누를 때 A-002 한 번으로 저장한다. 이어서 결과 탭에서 A-016으로 AI 피드백을 받는다.
 // 비슷한 기록의 "이 방법 적용"도 A-002로 저장(시도 1개, 해결됨)하고 결과 탭을 보여준다.
+// 이어서 해결하기(D-075 ~ D-077): /solve?retry={id}는 미해결 기록을 불러와(A-009) 입력은 잠그고 이어서 시도를 모은다.
+// 이때는 A-002 대신 A-006으로 이번에 새로 한 시도만 저장하고, A-005의 previous_attempts에는 기존 실패·일부 해결 시도를 함께 넣는다.
+// 일반 모드(retry 없음)의 동작은 그대로다. 아래 SolveFlow가 본체이고, SolvePage는 retry를 읽어 SolveFlow를 고른다.
 
 type Tab = 'input' | 'analysis' | 'result'
 
@@ -36,23 +48,39 @@ const EMPTY_TAGS: TagsValue = { existingIds: [], newNames: [] }
 // 어느 에러 메시지의 검색 결과인지 query로 구분한다. 현재 메시지와 다르면 아직 찾는 중이다. items가 null이면 실패.
 type SimilarResult = { query: string; items: SimilarError[] | null }
 
-function SolvePage() {
+type FlowProps = {
+  // 이어서 해결하기 모드일 때만 있다. 불러온 기록과 A-003 결과, 첫 탭이 담겨 있다
+  retry?: Extract<RetryState, { status: 'ready' }>
+  // "새 에러 입력": 주소의 retry를 지운다. 그러면 SolveFlow가 일반 모드로 새로 만들어진다
+  onLeaveRetry: () => void
+}
+
+function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
   const navigate = useNavigate()
-  const [tab, setTab] = useState<Tab>('input')
+  const detail = retry?.detail
+  // 입력 잠금(locked)과 별개의 모드다. 입력은 잠겨 있어도 AI에게 물을 수 있어야 한다.
+  const retrying = detail !== undefined
+  // 이미 저장된 시도. 일반 모드에서는 비어 있다
+  const existingAttempts: AttemptInput[] = detail ? detail.attempts.map((a) => ({ action: a.action, result: a.result })) : []
+  const enteredAtAi = retry?.entryTab === 'analysis'
+  const [tab, setTab] = useState<Tab>(retry?.entryTab ?? 'input')
   // 바뀌면 시리즈·태그 컴포넌트를 새로 만들어 입력을 비운다 ("새 에러 입력")
   const [formKey, setFormKey] = useState(0)
-  const [errorMessage, setErrorMessage] = useState('')
-  const [situation, setSituation] = useState('')
+  const [errorMessage, setErrorMessage] = useState(detail?.error_message ?? '')
+  const [situation, setSituation] = useState(detail?.situation ?? '')
   // null이면 새 시리즈 이름이 비었거나 중복이다
   const [seriesChoice, setSeriesChoice] = useState<SeriesChoice | null>({ kind: 'none' })
   const [tagsValue, setTagsValue] = useState<TagsValue>(EMPTY_TAGS)
   // "AI에게 묻기"(또는 "이 방법 적용" 성공)를 누르면 입력을 잠근다. 시도 기록이 그때의 에러 메시지에 대한 것이기 때문이다 (D-064)
-  const [locked, setLocked] = useState(false)
-  // 비슷한 기존 기록 (A-003)
-  const [similar, setSimilar] = useState<SimilarResult | null>(null)
+  // 이어서 해결하기에서 비슷한 기록이 0건이면 들어오자마자 AI에게 묻는 상태로 시작한다
+  const [locked, setLocked] = useState(enteredAtAi)
+  // 비슷한 기존 기록 (A-003). 이어서 해결하기는 들어올 때 이미 한 번 찾아 왔다
+  const [similar, setSimilar] = useState<SimilarResult | null>(
+    detail ? { query: detail.error_message.trim(), items: retry.similar } : null,
+  )
   const [applyingId, setApplyingId] = useState<number | null>(null)
   const [applyError, setApplyError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(enteredAtAi)
   const [result, setResult] = useState<Suggestion | null>(null)
   // 화면에 모아 둔 시도 (아직 저장하지 않음). 이번에 쓰는 시도는 폼에 있고 여기에 없다
   const [collected, setCollected] = useState<AttemptInput[]>([])
@@ -65,10 +93,13 @@ function SolvePage() {
   const busy = useRef(false)
 
   const message = errorMessage.trim()
+  // 에러 메시지·상황·시리즈·태그를 고칠 수 없는 상태: AI에게 물었거나 저장했거나, 이어서 해결하는 중이다
+  const inputLocked = locked || retrying
 
   // 입력이 멈추고 300ms 뒤 A-003을 부른다. 메시지가 바뀌면 이전 요청은 취소하고, 늦게 온 응답은 버린다.
+  // 이어서 해결하기는 메시지를 고칠 수 없고 들어올 때 이미 찾았으므로 부르지 않는다.
   useEffect(() => {
-    if (locked || !message) return
+    if (locked || retrying || !message) return
     const controller = new AbortController()
     const timer = setTimeout(async () => {
       const items = await searchSimilarErrors(message, controller.signal)
@@ -78,7 +109,7 @@ function SolvePage() {
       clearTimeout(timer)
       controller.abort()
     }
-  }, [message, locked])
+  }, [message, locked, retrying])
 
   // 새 결과가 올 때까지 이전 결과를 그대로 두어 목록이 깜빡이지 않게 한다. 대신 그동안 "이 방법 적용"은 막는다.
   const searchShown = !locked && message ? similar : null
@@ -89,12 +120,28 @@ function SolvePage() {
     setLoading(true)
     setResult(null)
     // 해결된 시도는 다음 방법을 묻지 않으므로 실패·일부 해결만 보낸다
-    const previous: PreviousAttempt[] = history.flatMap((a) =>
+    // 이어서 해결하기는 이미 저장된 실패·일부 해결 시도도 함께 보낸다 (D-076)
+    const previous: PreviousAttempt[] = [...existingAttempts, ...history].flatMap((a) =>
       a.result === 'solved' ? [] : [{ action: a.action, result: a.result }],
     )
     // requestSuggestion은 실패해도 예외 없이 unavailable을 돌려준다
     setResult(await requestSuggestion(errorText, previous))
     setLoading(false)
+  }
+
+  // 비슷한 기록이 0건이라 바로 AI 탭으로 들어왔다: 들어올 때 한 번만 A-005를 부른다 (StrictMode에서도 한 번)
+  const autoAsked = useRef(false)
+  useEffect(() => {
+    if (!enteredAtAi || autoAsked.current) return
+    autoAsked.current = true
+    void suggest(message, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 진입할 때 한 번만 부른다
+  }, [])
+
+  // 일반 모드는 A-002로 에러와 시도를 함께 저장하고, 이어서 해결하기는 A-006으로 이번 시도만 저장한다 (D-077)
+  function persist(choice: SeriesChoice, attempts: AttemptInput[], summary: string | null): Promise<SavedError> {
+    if (detail) return createAttempts(detail.id, { attempts, summary })
+    return createError(buildErrorBody(choice, attempts, summary))
   }
 
   function buildErrorBody(choice: SeriesChoice, attempts: AttemptInput[], summary: string | null): ErrorCreateBody {
@@ -146,7 +193,7 @@ function SolvePage() {
     let record: SavedError
     try {
       const attempts = [...collected, { action: body.action, result: body.result }]
-      record = await createError(buildErrorBody(seriesChoice, attempts, body.summary))
+      record = await persist(seriesChoice, attempts, body.summary)
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e))
       return
@@ -165,9 +212,7 @@ function SolvePage() {
     setApplyError(null)
     let record: SavedError
     try {
-      record = await createError(
-        buildErrorBody(seriesChoice, [{ action: `기존 기록 #${match.id}의 해결 방법 적용`, result: 'solved' }], match.summary),
-      )
+      record = await persist(seriesChoice, [{ action: `기존 기록 #${match.id}의 해결 방법 적용`, result: 'solved' }], match.summary)
     } catch (e) {
       setApplyError(e instanceof Error ? `${e.message} 입력한 내용은 그대로 있어요.` : APPLY_FAILED)
       return
@@ -186,6 +231,11 @@ function SolvePage() {
   }
 
   function startNewError() {
+    // 이어서 해결하기: 주소의 retry를 지우면 SolveFlow가 일반 모드로 새로 만들어져 모든 상태가 초기화된다
+    if (retrying) {
+      onLeaveRetry()
+      return
+    }
     setFormKey((k) => k + 1)
     setTab('input')
     setErrorMessage('')
@@ -237,16 +287,27 @@ function SolvePage() {
 
       {/* 탭을 바꿔도 선택이 남도록 언마운트하지 않고 숨긴다. 시안 ①처럼 에러 메시지 위에 둔다. */}
       <div hidden={tab !== 'input'} key={formKey}>
-        {locked && (
+        {inputLocked && (
           <p className="locked-notice">
-            {saved ? '저장한 에러예요.' : 'AI에게 물은 에러예요. 아직 저장하지 않았어요.'} 내용을 바꾸려면 새 에러로 입력해 주세요.
+            {saved
+              ? '저장한 에러예요.'
+              : retrying
+                ? '미해결 기록을 이어서 해결하고 있어요.'
+                : 'AI에게 물은 에러예요. 아직 저장하지 않았어요.'}{' '}
+            내용을 바꾸려면 새 에러로 입력해 주세요.
             <button type="button" className="btn-secondary" onClick={startNewError}>
               새 에러 입력
             </button>
           </p>
         )}
-        <SeriesSelect onChange={setSeriesChoice} disabled={locked} />
-        <TagInput onChange={setTagsValue} disabled={locked} />
+        {detail ? (
+          <ReadOnlyLabels detail={detail} />
+        ) : (
+          <>
+            <SeriesSelect onChange={setSeriesChoice} disabled={locked} />
+            <TagInput onChange={setTagsValue} disabled={locked} />
+          </>
+        )}
       </div>
 
       {tab === 'input' && (
@@ -261,7 +322,7 @@ function SolvePage() {
             maxLength={10000}
             placeholder="에러 메시지나 Traceback을 붙여넣으세요"
             value={errorMessage}
-            readOnly={locked}
+            readOnly={inputLocked}
             onChange={(e) => {
               setErrorMessage(e.target.value)
               setApplyError(null)
@@ -275,9 +336,10 @@ function SolvePage() {
             className="situation-input"
             placeholder="예: 새로 만든 가상환경에서 처음 실행함"
             value={situation}
-            disabled={locked}
+            disabled={inputLocked}
             onChange={(e) => setSituation(e.target.value)}
           />
+          {detail && <PreviousAttempts detail={detail} />}
 
           {!locked && message && (
             <div aria-live="polite">
@@ -322,12 +384,15 @@ function SolvePage() {
 
           {locked && <pre className="code-view">{errorMessage}</pre>}
 
+          {detail && <PreviousAttempts detail={detail} />}
+
           {collected.length > 0 && (
             <ul className="attempt-history" aria-label="화면에 모아 둔 시도">
               {collected.map((a, i) => (
                 <li key={i}>
+                  {/* 번호는 보기용이다. 실제 seq는 저장할 때 서버가 기존 시도 다음 번호부터 매긴다 (D-077) */}
                   <span className={`attempt-badge ${a.result}`}>
-                    시도 {i + 1} · {RESULT_LABELS[a.result]}
+                    시도 {existingAttempts.length + i + 1} · {RESULT_LABELS[a.result]}
                   </span>
                   {a.action}
                 </li>
@@ -349,7 +414,7 @@ function SolvePage() {
               {result && !loading && (
                 <AttemptForm
                   key={collected.length + 1}
-                  seq={collected.length + 1}
+                  seq={existingAttempts.length + collected.length + 1}
                   saving={saving}
                   error={saveError}
                   onSave={saveRecord}
@@ -385,6 +450,27 @@ function SolvePage() {
       )}
     </>
   )
+}
+
+function SolvePage() {
+  const [params, setParams] = useSearchParams()
+  // 숫자가 아니면 일반 모드로 처리한다
+  const retry = useRetryRecord(parseRetryId(params.get('retry')))
+
+  function leaveRetry() {
+    setParams({}, { replace: true })
+  }
+
+  if (retry.status === 'off') return <SolveFlow key="new" onLeaveRetry={leaveRetry} />
+  if (retry.status !== 'ready') {
+    return (
+      <>
+        <h1 className="page-title">에러 해결</h1>
+        <RetryNotice state={retry} onNewError={leaveRetry} />
+      </>
+    )
+  }
+  return <SolveFlow key={`retry-${retry.detail.id}`} retry={retry} onLeaveRetry={leaveRetry} />
 }
 
 export default SolvePage
