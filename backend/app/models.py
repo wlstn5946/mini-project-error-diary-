@@ -54,9 +54,13 @@ class ErrorRecord(Base):
     series_order: Mapped[int | None] = mapped_column()
     # unresolved / resolved (D-028)
     status: Mapped[str] = mapped_column(String, default="unresolved")
-    # 내 한 줄 정리와 해결 시각. resolved일 때만 값이 있다. (D-026)
+    # 내 한 줄 정리. 해결됨이면 필수이고, 미해결에도 선택으로 저장한다. (D-026, D-064 이후 변경)
     summary: Mapped[str | None] = mapped_column(String)
+    # 해결 시각. resolved일 때만 값이 있다.
     resolved_at: Mapped[str | None] = mapped_column(String)
+    # AI 피드백. 기록 저장 뒤 받아서 저장하고, 한 줄 정리를 고치면 다시 받아 덮어쓴다. 없으면 NULL. (Q-003)
+    # 이미 만들어진 DB에는 init_db()가 컬럼을 추가한다. (D-052)
+    ai_feedback: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[str] = mapped_column(String, default=now_kst)
 
 

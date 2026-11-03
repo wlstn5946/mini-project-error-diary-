@@ -110,6 +110,21 @@ def mark_resolved(db: Session, error: ErrorRecord, summary: str) -> None:
     db.flush()
 
 
+def set_summary(db: Session, error: ErrorRecord, summary: str | None) -> None:
+    """내 한 줄 정리를 바꾼다. 비우면 None이다. 상태는 바꾸지 않는다. 커밋은 호출하는 쪽에서 한다.
+
+    A-002(기록 저장)에서는 팀원 1이, A-007(한 줄 정리 수정)에서는 팀원 2가 쓴다.
+    """
+    error.summary = summary
+    db.flush()
+
+
+def set_feedback(db: Session, error: ErrorRecord, feedback: str) -> None:
+    """AI 피드백을 저장한다(덮어쓴다). A-016용으로 팀원 2가 쓴다. 커밋은 호출하는 쪽에서 한다."""
+    error.ai_feedback = feedback
+    db.flush()
+
+
 def update_error(
     db: Session,
     error: ErrorRecord,

@@ -74,6 +74,11 @@ def list_tags(db: Session = Depends(get_db)) -> list[TagResponse]:
     return [_tag_response(tag, counts.get(tag.id, 0)) for tag in tags_repo.list_tags(db)]
 
 
+class AttemptInput(BaseModel):
+    action: str
+    result: Literal["solved", "failed", "partial"]  # D-028
+
+
 class ErrorCreateRequest(BaseModel):
     # 상한은 A-005와 맞춘다. 저장한 메시지를 그대로 AI에게 보내기 때문이다.
     error_message: str = Field(max_length=10_000)
@@ -83,6 +88,10 @@ class ErrorCreateRequest(BaseModel):
     new_series_name: str | None = None
     tag_ids: list[int] = []
     new_tag_names: list[str] = []
+    # 화면에 모아 둔 시도. 순서대로 seq 1부터 저장한다. 1개 이상 필수. (D-064)
+    attempts: list[AttemptInput] = []
+    # 내 한 줄 정리. 마지막 시도가 해결됨이면 필수이고, 그 밖에는 선택이다.
+    summary: str | None = None
 
 
 class NamedItem(BaseModel):
@@ -92,13 +101,25 @@ class NamedItem(BaseModel):
     name: str
 
 
+class AttemptItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    seq: int
+    action: str
+    result: str
+    created_at: str
+
+
 class ErrorCreatedResponse(BaseModel):
     id: int
     error_message: str
     situation: str | None
     status: str
+    summary: str | None
+    resolved_at: str | None
     series: NamedItem | None
     tags: list[NamedItem]
+    attempts: list[AttemptItem]
     created_at: str
 
 
@@ -192,14 +213,27 @@ def _resolve_tags(db: Session, tag_ids: list[int], new_tag_names: list[str]) -> 
     return chosen, to_create
 
 
-# A-002 에러 등록 (R-001, D-024, D-025). 새 에러로 확정되는 순간 미해결로 저장한다.
-# 새 시리즈·새 태그도 이때 함께 만든다(D-011, D-020). 모두 한 트랜잭션이다.
+# A-002 기록 저장 (R-001, D-064). 에러와 화면에 모아 둔 시도를 "기록 저장" 때 한 번에 저장한다.
+# 새 시리즈·새 태그도 이때 함께 만든다(D-011, D-020). 에러·태그 연결·시도·해결 처리까지 모두 한 트랜잭션이다.
+# 마지막 시도가 해결됨이면 resolved, 아니면 unresolved다. (D-028, D-029)
 @router.post("/errors", response_model=ErrorCreatedResponse, status_code=201)
 def create_error(body: ErrorCreateRequest, db: Session = Depends(get_db)) -> ErrorCreatedResponse:
     error_message = body.error_message.strip()
     if not error_message:
         raise _invalid("에러 메시지를 입력해 주세요.")
     situation = (body.situation or "").strip() or None
+
+    if not body.attempts:
+        raise _invalid("시도 기록이 1개 이상 있어야 저장할 수 있어요.")
+    attempts = [(attempt.action.strip(), attempt.result) for attempt in body.attempts]
+    if any(not action for action, _ in attempts):
+        raise _invalid("무엇을 했는지 입력해 주세요.")
+    if any(result == "solved" for _, result in attempts[:-1]):
+        raise _invalid("해결됨은 마지막 시도에만 쓸 수 있어요.")
+    solved = attempts[-1][1] == "solved"
+    summary = (body.summary or "").strip() or None
+    if solved and summary is None:
+        raise _invalid("해결됨으로 저장하려면 한 줄 정리를 입력해 주세요.")  # A-006과 같은 문구 (D-026)
 
     # 먼저 모두 검사하고, 통과하면 그때 만든다. 중간에 실패해도 커밋 전이라 아무것도 남지 않는다.
     if body.series_id is not None and body.new_series_name is not None:
@@ -222,6 +256,11 @@ def create_error(body: ErrorCreateRequest, db: Session = Depends(get_db)) -> Err
         series = series_repo.create_series(db, new_series_name)
     tags += [tags_repo.create_tag(db, name) for name in new_tag_names]
     error = errors_repo.create_error(db, error_message, situation, series.id if series else None, [tag.id for tag in tags])
+    saved = [attempts_repo.create_attempt(db, error.id, seq, action, result) for seq, (action, result) in enumerate(attempts, 1)]
+    if solved:
+        errors_repo.mark_resolved(db, error, summary)  # 팀원 2 함수 그대로 (D-030)
+    else:
+        errors_repo.set_summary(db, error, summary)  # 미해결에도 한 줄 정리는 선택으로 저장한다
     db.commit()
 
     return ErrorCreatedResponse(
@@ -229,8 +268,11 @@ def create_error(body: ErrorCreateRequest, db: Session = Depends(get_db)) -> Err
         error_message=error.error_message,
         situation=error.situation,
         status=error.status,
+        summary=error.summary,
+        resolved_at=error.resolved_at,
         series=NamedItem.model_validate(series) if series else None,
         tags=[NamedItem.model_validate(tag) for tag in tags],
+        attempts=[AttemptItem.model_validate(attempt) for attempt in saved],
         created_at=error.created_at,
     )
 
@@ -248,18 +290,11 @@ class ErrorListItem(BaseModel):
     resolved_at: str | None
 
 
-class AttemptItem(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    seq: int
-    action: str
-    result: str
-    created_at: str
-
-
 class ErrorDetailResponse(ErrorListItem):
     situation: str | None
     summary: str | None
+    # AI 피드백. 이전 기록이나 받기에 실패한 기록은 None이다. 목록(A-008)에는 넣지 않는다. (Q-003)
+    ai_feedback: str | None
     attempts: list[AttemptItem]
 
 
@@ -312,6 +347,7 @@ def get_error_detail(error_id: int, db: Session = Depends(get_db)) -> ErrorDetai
         **item.model_dump(),
         situation=error.situation,
         summary=error.summary,
+        ai_feedback=error.ai_feedback,
         attempts=[AttemptItem.model_validate(attempt) for attempt in attempts_repo.list_attempts(db, error.id)],
     )
 
