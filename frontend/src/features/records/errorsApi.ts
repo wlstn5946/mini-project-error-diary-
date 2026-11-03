@@ -58,6 +58,8 @@ export type ErrorStats = {
   unresolved: number
   // "이 방법 적용"으로 저장한 해결 기록 수
   reused_resolved: number
+  // 오래된 미해결 기록 수 (등록 14일 이상). 1 이상이면 사이드바 미해결 칸에 빨간 불이 켜진다 (D-078)
+  stale_unresolved: number
 }
 
 // 서버 오류·네트워크 오류면 예외를 던지므로 호출하는 쪽에서 처리한다.
@@ -86,6 +88,8 @@ export type ErrorListItem = {
   attempt_count: number
   created_at: string
   resolved_at: string | null
+  // 오래된 기록: 미해결이고 등록한 지 14일 이상. 목록 항목의 빨간 불이 이 값을 따른다 (D-078)
+  is_stale: boolean
 }
 
 // 내 기록 필터. 모두 선택이고, 함께 쓰면 모두 만족하는 기록만 온다 (D-036)
@@ -93,6 +97,8 @@ export type ErrorFilters = {
   status: ErrorStatus | null
   tagIds: number[]
   q: string
+  // true면 오래된 기록(미해결 + 등록 14일 이상)만 (D-078)
+  stale: boolean
 }
 
 // A-008. 서버 오류·네트워크 오류면 예외를 던지므로 호출하는 쪽에서 처리한다.
@@ -101,6 +107,7 @@ export async function listErrors(filters: ErrorFilters, signal?: AbortSignal): P
   if (filters.status) params.set('status', filters.status)
   for (const id of filters.tagIds) params.append('tag_id', String(id))
   if (filters.q.trim()) params.set('q', filters.q.trim())
+  if (filters.stale) params.set('stale', 'true')
   const query = params.toString()
   const res = await request(`/api/errors${query ? `?${query}` : ''}`, { signal })
   return (await res.json()) as ErrorListItem[]

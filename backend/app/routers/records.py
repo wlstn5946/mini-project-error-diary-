@@ -288,6 +288,8 @@ class ErrorListItem(BaseModel):
     attempt_count: int
     created_at: str
     resolved_at: str | None
+    # 오래된 기록인가: 미해결이고 등록한 지 14일 이상. 화면의 빨간 불이 이 값을 따른다. (D-078)
+    is_stale: bool
 
 
 class ErrorDetailResponse(ErrorListItem):
@@ -304,6 +306,7 @@ def _list_items(db: Session, errors: list[ErrorRecord]) -> list[ErrorListItem]:
     series = series_repo.get_series_by_ids(db, {error.series_id for error in errors if error.series_id is not None})
     tags = errors_repo.get_tags_by_error_ids(db, error_ids)
     counts = attempts_repo.count_by_error_ids(db, error_ids)
+    cutoff = errors_repo.stale_cutoff()
     return [
         ErrorListItem(
             id=error.id,
@@ -315,6 +318,7 @@ def _list_items(db: Session, errors: list[ErrorRecord]) -> list[ErrorListItem]:
             attempt_count=counts[error.id],
             created_at=error.created_at,
             resolved_at=error.resolved_at,
+            is_stale=errors_repo.is_stale(error, cutoff),
         )
         for error in errors
     ]
@@ -329,10 +333,12 @@ def list_errors(
     q: str | None = Query(default=None, max_length=200),
     # 그 시리즈의 에러만, 시리즈 안 순서대로. 없는 시리즈 ID면 빈 결과다. (D-042, D-051)
     series_id: int | None = None,
+    # true이면 오래된 기록(미해결 + 등록 14일 이상)만. 다른 필터와 함께 쓰면 모두 만족하는 것만 준다. (D-078)
+    stale: bool = False,
     db: Session = Depends(get_db),
 ) -> list[ErrorListItem]:
     keyword = (q or "").strip() or None
-    errors = errors_repo.list_errors(db, status, list(dict.fromkeys(tag_id)), keyword, series_id)
+    errors = errors_repo.list_errors(db, status, list(dict.fromkeys(tag_id)), keyword, series_id, stale)
     return _list_items(db, errors)
 
 
@@ -341,6 +347,8 @@ class ErrorStatsResponse(BaseModel):
     resolved: int
     unresolved: int
     reused_resolved: int
+    # 오래된 미해결 기록 수 (D-078). 1 이상이면 사이드바 미해결 칸의 빨간 불이 켜진다.
+    stale_unresolved: int
 
 
 # A-017 기록 통계 (R-005, D-074). 사이드바 대시보드의 에러 기록·해결·미해결·재사용 해결 개수.
@@ -353,6 +361,7 @@ def get_error_stats(db: Session = Depends(get_db)) -> ErrorStatsResponse:
         resolved=counts["resolved"],
         unresolved=counts["unresolved"],
         reused_resolved=errors_repo.count_reused_resolved(db),
+        stale_unresolved=errors_repo.count_stale_unresolved(db),
     )
 
 
