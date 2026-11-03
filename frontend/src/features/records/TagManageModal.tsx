@@ -1,22 +1,20 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { ApiError } from '../../api'
 import ConfirmDialog from './ConfirmDialog'
-import SeriesEditForm from './SeriesEditForm'
-import { deleteSeries, fetchSeries, type Series } from './seriesApi'
 import { deleteTag, fetchTags, renameTag, type Tag } from './tagsApi'
 
-// "⚙ 관리" 모달 (S-002, D-042). 태그·시리즈 이름 변경과 삭제를 한다. 메뉴는 늘리지 않는다 (D-005).
-// 새로 만드는 곳은 없다. 태그·시리즈는 에러를 입력할 때 만든다 (D-011, D-020).
+// "⚙ 태그 관리" 모달 (S-002, D-063). 태그 이름 변경과 삭제만 한다. 태그별 탭에서 연다.
+// 새로 만드는 곳은 없다. 태그는 에러를 입력할 때 만든다 (D-020).
 
 // 닫을 때 부모가 알아야 하는 것: 바뀐 게 있으면 목록·태그 칩을 다시 불러오고, 지운 태그는 필터에서 뺀다
-export type ManageResult = { changed: boolean; deletedTagIds: number[] }
+export type TagManageResult = { changed: boolean; deletedTagIds: number[] }
 
 type Props = {
-  onClose: (result: ManageResult) => void
+  onClose: (result: TagManageResult) => void
 }
 
-type Load<T> = { status: 'loading' } | { status: 'error' } | { status: 'ready'; items: T[] }
-type Target = { kind: 'tag' | 'series'; id: number; name: string; count: number }
+type Load = { status: 'loading' } | { status: 'error' } | { status: 'ready'; items: Tag[] }
+type Target = { id: number; name: string; count: number }
 
 const GONE = '이미 삭제된 항목이에요.'
 
@@ -111,56 +109,12 @@ function TagRow({ tag, onRenamed, onAskDelete, onGone }: TagRowProps) {
   )
 }
 
-type SeriesRowProps = {
-  series: Series
-  onUpdated: (series: Series) => void
-  onAskDelete: () => void
-  onGone: () => void
-}
-
-function SeriesRow({ series, onUpdated, onAskDelete, onGone }: SeriesRowProps) {
-  const [editing, setEditing] = useState(false)
-
-  if (editing) {
-    return (
-      <li className="manage-row">
-        <SeriesEditForm
-          series={series}
-          onSaved={(updated) => {
-            setEditing(false)
-            onUpdated(updated)
-          }}
-          onCancel={() => setEditing(false)}
-          onGone={onGone}
-        />
-      </li>
-    )
-  }
-  return (
-    <li className="manage-row">
-      <span className="manage-name">
-        {series.name}
-        {series.description && <span className="manage-desc">{series.description}</span>}
-      </span>
-      <span className="manage-count">{series.error_count}개 기록</span>
-      <button type="button" className="btn-secondary manage-btn" onClick={() => setEditing(true)}>
-        이름·설명 수정
-      </button>
-      <button type="button" className="btn-danger manage-btn" onClick={onAskDelete}>
-        삭제
-      </button>
-    </li>
-  )
-}
-
-function ManageModal({ onClose }: Props) {
+function TagManageModal({ onClose }: Props) {
   const ref = useRef<HTMLDialogElement>(null)
   const changed = useRef(false)
   const deletedTagIds = useRef<number[]>([])
-  const [tags, setTags] = useState<Load<Tag>>({ status: 'loading' })
-  const [series, setSeries] = useState<Load<Series>>({ status: 'loading' })
+  const [tags, setTags] = useState<Load>({ status: 'loading' })
   const [tagsKey, setTagsKey] = useState(0)
-  const [seriesKey, setSeriesKey] = useState(0)
   // 다른 곳에서 이미 지워진 항목을 건드렸다는 안내
   const [notice, setNotice] = useState<string | null>(null)
   const [target, setTarget] = useState<Target | null>(null)
@@ -185,16 +139,6 @@ function ManageModal({ onClose }: Props) {
     return () => controller.abort()
   }, [tagsKey])
 
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchSeries(controller.signal)
-      .then((items) => setSeries({ status: 'ready', items }))
-      .catch(() => {
-        if (!controller.signal.aborted) setSeries({ status: 'error' })
-      })
-    return () => controller.abort()
-  }, [seriesKey])
-
   function close() {
     ref.current?.close() // 닫으면 모달을 연 버튼으로 포커스가 돌아간다
     onClose({ changed: changed.current, deletedTagIds: deletedTagIds.current })
@@ -206,19 +150,10 @@ function ManageModal({ onClose }: Props) {
     setTagsKey((k) => k + 1) // 이름순이 바뀔 수 있어서 서버 순서로 다시 받는다
   }
 
-  function seriesChanged(updated: Series) {
-    changed.current = true
-    setNotice(null)
-    setSeries((prev) =>
-      prev.status === 'ready' ? { status: 'ready', items: prev.items.map((s) => (s.id === updated.id ? updated : s)) } : prev,
-    )
-  }
-
-  function itemGone(kind: 'tag' | 'series') {
+  function itemGone() {
     changed.current = true
     setNotice(GONE)
-    if (kind === 'tag') setTagsKey((k) => k + 1)
-    else setSeriesKey((k) => k + 1)
+    setTagsKey((k) => k + 1)
   }
 
   function askDelete(next: Target) {
@@ -232,20 +167,15 @@ function ManageModal({ onClose }: Props) {
     setDeleting(true)
     setDeleteError(null)
     try {
-      if (target.kind === 'tag') {
-        await deleteTag(target.id)
-        deletedTagIds.current.push(target.id)
-        setTags((prev) => (prev.status === 'ready' ? { status: 'ready', items: prev.items.filter((t) => t.id !== target.id) } : prev))
-      } else {
-        await deleteSeries(target.id)
-        setSeries((prev) => (prev.status === 'ready' ? { status: 'ready', items: prev.items.filter((s) => s.id !== target.id) } : prev))
-      }
+      await deleteTag(target.id)
+      deletedTagIds.current.push(target.id)
+      setTags((prev) => (prev.status === 'ready' ? { status: 'ready', items: prev.items.filter((t) => t.id !== target.id) } : prev))
       changed.current = true
       setNotice(null)
       setTarget(null)
     } catch (err) {
       if (isGone(err)) {
-        itemGone(target.kind)
+        itemGone()
         setTarget(null)
       } else {
         // 창은 열어 둔 채 안내만 바꾼다. 같은 버튼으로 다시 시도할 수 있다.
@@ -256,22 +186,6 @@ function ManageModal({ onClose }: Props) {
       busy.current = false
     }
   }
-
-  const retry = (reload: () => void, setLoading: () => void) => (
-    <p className="manage-error">
-      불러오지 못했어요.
-      <button
-        type="button"
-        className="btn-secondary manage-btn"
-        onClick={() => {
-          setLoading()
-          reload()
-        }}
-      >
-        다시 시도
-      </button>
-    </p>
-  )
 
   return (
     <>
@@ -292,7 +206,7 @@ function ManageModal({ onClose }: Props) {
         <div className="manage-body">
           <header className="manage-header">
             <h2 id="manage-title" className="manage-title">
-              태그·시리즈 관리
+              태그 관리
             </h2>
             <button type="button" className="manage-close" aria-label="닫기" onClick={close}>
               ×
@@ -301,59 +215,44 @@ function ManageModal({ onClose }: Props) {
 
           <div aria-live="polite">{notice && <p className="manage-notice">{notice}</p>}</div>
 
-          <section aria-labelledby="manage-tags-title">
-            <h3 id="manage-tags-title" className="manage-section">
-              태그
-            </h3>
-            {tags.status === 'loading' && <p className="hint">불러오는 중…</p>}
-            {tags.status === 'error' && retry(() => setTagsKey((k) => k + 1), () => setTags({ status: 'loading' }))}
-            {tags.status === 'ready' &&
-              (tags.items.length === 0 ? (
-                <p className="hint">아직 태그가 없어요.</p>
-              ) : (
-                <ul className="manage-list">
-                  {tags.items.map((tag) => (
-                    <TagRow
-                      key={tag.id}
-                      tag={tag}
-                      onRenamed={tagChanged}
-                      onAskDelete={() => askDelete({ kind: 'tag', id: tag.id, name: tag.name, count: tag.error_count })}
-                      onGone={() => itemGone('tag')}
-                    />
-                  ))}
-                </ul>
-              ))}
-          </section>
-
-          <section aria-labelledby="manage-series-title">
-            <h3 id="manage-series-title" className="manage-section">
-              시리즈
-            </h3>
-            {series.status === 'loading' && <p className="hint">불러오는 중…</p>}
-            {series.status === 'error' && retry(() => setSeriesKey((k) => k + 1), () => setSeries({ status: 'loading' }))}
-            {series.status === 'ready' &&
-              (series.items.length === 0 ? (
-                <p className="hint">아직 시리즈가 없어요.</p>
-              ) : (
-                <ul className="manage-list">
-                  {series.items.map((item) => (
-                    <SeriesRow
-                      key={item.id}
-                      series={item}
-                      onUpdated={seriesChanged}
-                      onAskDelete={() => askDelete({ kind: 'series', id: item.id, name: item.name, count: item.error_count })}
-                      onGone={() => itemGone('series')}
-                    />
-                  ))}
-                </ul>
-              ))}
-          </section>
+          {tags.status === 'loading' && <p className="hint">불러오는 중…</p>}
+          {tags.status === 'error' && (
+            <p className="manage-error">
+              불러오지 못했어요.
+              <button
+                type="button"
+                className="btn-secondary manage-btn"
+                onClick={() => {
+                  setTags({ status: 'loading' })
+                  setTagsKey((k) => k + 1)
+                }}
+              >
+                다시 시도
+              </button>
+            </p>
+          )}
+          {tags.status === 'ready' &&
+            (tags.items.length === 0 ? (
+              <p className="hint">아직 태그가 없어요.</p>
+            ) : (
+              <ul className="manage-list">
+                {tags.items.map((tag) => (
+                  <TagRow
+                    key={tag.id}
+                    tag={tag}
+                    onRenamed={tagChanged}
+                    onAskDelete={() => askDelete({ id: tag.id, name: tag.name, count: tag.error_count })}
+                    onGone={itemGone}
+                  />
+                ))}
+              </ul>
+            ))}
         </div>
       </dialog>
 
       {target && (
         <ConfirmDialog
-          title={target.kind === 'tag' ? `#${target.name} 태그를 지울까요?` : `'${target.name}' 시리즈를 지울까요?`}
+          title={`#${target.name} 태그를 지울까요?`}
           confirmLabel="삭제"
           busyLabel="삭제 중…"
           busy={deleting}
@@ -365,9 +264,7 @@ function ManageModal({ onClose }: Props) {
           }}
         >
           <p className="confirm-text">
-            {target.count > 0
-              ? `${target.count}개 기록에서 ${target.kind === 'tag' ? '태그가 빠져요' : '시리즈가 비워져요'}. 기록은 지워지지 않아요.`
-              : '되돌릴 수 없어요.'}
+            {target.count > 0 ? `${target.count}개 기록에서 태그가 빠져요. 기록은 지워지지 않아요.` : '되돌릴 수 없어요.'}
           </p>
         </ConfirmDialog>
       )}
@@ -375,4 +272,4 @@ function ManageModal({ onClose }: Props) {
   )
 }
 
-export default ManageModal
+export default TagManageModal

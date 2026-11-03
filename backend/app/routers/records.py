@@ -1,7 +1,7 @@
-"""팀원 1 (찾기·정리): A-002, A-003, A-004, A-008, A-009, A-010, A-011, A-012, A-013, A-014 (API-SPEC 5절).
+"""팀원 1 (찾기·정리): A-002, A-003, A-004, A-008, A-009, A-010, A-011, A-012, A-013, A-014, A-015 (API-SPEC 5절).
 
 경로는 /errors, /errors/search 처럼 전체 상대 경로로 적는다. prefix(/api)는 main.py에서 붙인다.
-이번 범위는 A-002(POST /errors), A-003(POST /errors/search), A-004(GET /series, GET /tags), A-008(GET /errors), A-009(GET /errors/{id}), A-010(PATCH /errors/{id}), A-011(DELETE /errors/{id}), A-012(PATCH·DELETE /tags/{id}), A-013(PATCH·DELETE /series/{id}), A-014(PUT /series/{id}/order)를 구현한다.
+이번 범위는 A-002(POST /errors), A-003(POST /errors/search), A-004(GET /series, GET /tags), A-008(GET /errors), A-009(GET /errors/{id}), A-010(PATCH /errors/{id}), A-011(DELETE /errors/{id}), A-012(PATCH·DELETE /tags/{id}), A-013(PATCH·DELETE /series/{id}), A-014(PUT /series/{id}/order), A-015(POST /series)를 구현한다.
 A-003(/errors/search)은 A-009(/errors/{error_id})보다 위에 선언한다. 먼저 선언한 경로가 먼저 매칭되기 때문이다.
 SQL은 이 파일에 쓰지 않고 backend/app/repositories/에만 둔다. (D-016)
 """
@@ -420,6 +420,28 @@ def delete_tag(tag_id: int, db: Session = Depends(get_db)) -> None:
         raise HTTPException(status_code=404, detail="태그를 찾을 수 없어요.")
     tags_repo.delete_tag(db, tag)
     db.commit()
+
+
+class SeriesCreateRequest(BaseModel):
+    name: str
+    description: str | None = None
+
+
+# A-015 시리즈 새로 만들기 (R-005, D-017, D-049, D-054, D-061). 같은 이름(공백 제외·대소문자 무시)이면 409.
+@router.post("/series", response_model=SeriesResponse, status_code=201)
+def create_series(body: SeriesCreateRequest, db: Session = Depends(get_db)) -> SeriesResponse:
+    name = body.name.strip()
+    if not name:
+        raise _invalid("시리즈 이름을 입력해 주세요.")
+    if series_repo.find_series_by_name(db, name) is not None:
+        raise HTTPException(status_code=409, detail=NAME_TAKEN)
+    series = series_repo.create_series(db, name, (body.description or "").strip() or None)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=NAME_TAKEN)
+    return _series_response(series, 0)
 
 
 class SeriesUpdateRequest(BaseModel):

@@ -201,6 +201,18 @@
 }
 
 /* 태그별 보기 (D-055, 시안 내기록창 ②) */
+.tag-view-caption-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.tag-view-caption-row .tag-view-caption {
+  margin: 0;
+}
+
 .tag-view-caption {
   margin: 0 0 8px;
   color: var(--text-sub);
@@ -619,6 +631,16 @@
 
 .series-detail .manage-edit {
   margin-bottom: 12px;
+}
+
+.series-create {
+  margin: 12px 0;
+}
+
+.series-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
 }
 
 .series-items {

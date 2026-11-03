@@ -18,6 +18,13 @@ export async function fetchSeries(signal?: AbortSignal): Promise<Series[]> {
   return (await res.json()) as Series[]
 }
 
+// A-015 POST /api/series. 이름은 필수, 설명은 없거나 비우면 null (D-061).
+// 실패하면 화면에 보여줄 문구를 담은 ApiError를 던진다 (같은 이름 409)
+export async function createSeries(input: { name: string; description: string | null }): Promise<Series> {
+  const res = await request('/api/series', jsonInit('POST', input), RENAME_FAILED, GONE_OR_TAKEN)
+  return (await res.json()) as Series
+}
+
 // A-013 PATCH /api/series/{id}. 보낸 필드만 바뀌고, description을 null로 보내면 설명을 지운다 (D-054).
 // 실패하면 화면에 보여줄 문구를 담은 ApiError를 던진다 (같은 이름 409, 이미 삭제됨 404)
 export async function updateSeries(

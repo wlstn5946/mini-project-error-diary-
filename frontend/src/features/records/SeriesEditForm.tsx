@@ -2,7 +2,7 @@ import { useState, type FormEvent, type KeyboardEvent } from 'react'
 import { ApiError } from '../../api'
 import { updateSeries, type Series } from './seriesApi'
 
-// 시리즈 이름·설명 수정 폼 (S-002, D-054). 관리 모달과 시리즈별 보기에서 같이 쓴다.
+// 시리즈 이름·설명 수정 폼 (S-002, D-054). 시리즈별 보기에서 쓴다.
 // 같은 이름이면(409) 안내하고 입력값을 그대로 둔다 (D-049). 이미 삭제된 시리즈면(404) 부모에게 알린다.
 
 type Props = {
