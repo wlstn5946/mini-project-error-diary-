@@ -364,8 +364,21 @@
 /* 상세의 버튼 영역과 삭제 확인 창 */
 .detail-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 16px;
+}
+
+/* 내보내기 버튼 묶음은 버튼 줄의 오른쪽 끝에 붙는다 */
+.export-buttons {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* 내보내기 실패 안내는 버튼 줄 아래 한 줄을 다 쓴다 */
+.detail-actions .edit-error {
+  flex-basis: 100%;
 }
 
 .btn-danger {
@@ -723,4 +736,70 @@
 .edit-buttons {
   display: flex;
   gap: 8px;
+}
+
+/* 에러 일기 PDF 내보내기(브라우저 인쇄, S-003, D-079 예정).
+   이 파일은 한 번 불러오면 앱 전체에 적용되므로, 인쇄 직전에 body에 붙는 printing-record 클래스(exportActions.ts)
+   안에서만 적용한다. 다른 화면에서 Ctrl+P를 눌렀을 때는 아무것도 바뀌지 않는다. */
+@media print {
+  /* 사이드바·뒤로 가기·모든 버튼(수정·삭제·내보내기·피드백 받기 등)·확인 창은 숨긴다.
+     피드백 칸의 버튼은 팀원 2 파일이라 클래스를 붙이지 않고 .detail 안의 button을 한꺼번에 숨긴다. */
+  body.printing-record .sidebar,
+  body.printing-record .back-link,
+  body.printing-record .detail-actions,
+  body.printing-record .detail button,
+  body.printing-record dialog {
+    display: none !important;
+  }
+
+  /* 사이드바가 빠진 본문이 전체 폭을 쓴다 */
+  body.printing-record .layout {
+    display: block;
+    min-height: 0;
+  }
+
+  body.printing-record .content {
+    padding: 0;
+  }
+
+  /* 상태·태그·결과 칩은 배경이 인쇄되지 않아도 보이게 테두리로 구분한다 */
+  body.printing-record .status-badge,
+  body.printing-record .record-series,
+  body.printing-record .record-tag,
+  body.printing-record .attempt-result-badge {
+    border: 1px solid currentColor;
+    background: none;
+  }
+
+  /* 어두운 배경의 코드 영역은 흰 바탕·검은 글씨로 바꾸고, 긴 Traceback이 잘리지 않게 줄바꿈한다 */
+  body.printing-record .detail .code-view {
+    border: 1px solid #9ca3af;
+    background: none;
+    color: #000;
+    overflow: visible;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  body.printing-record .detail-summary,
+  body.printing-record .feedback-box {
+    background: none;
+  }
+
+  /* 타임라인 점은 배경색이라 브라우저가 기본으로 빼므로 색을 그대로 인쇄하게 한다 */
+  body.printing-record .timeline-item::before {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* 시도 하나, 한 줄 정리, 피드백 칸은 페이지 사이에서 끊기지 않게 하고, 소제목은 다음 내용과 떨어지지 않게 한다 */
+  body.printing-record .timeline-item,
+  body.printing-record .detail-summary,
+  body.printing-record .feedback-box {
+    break-inside: avoid;
+  }
+
+  body.printing-record .detail-label {
+    break-after: avoid;
+  }
 }
