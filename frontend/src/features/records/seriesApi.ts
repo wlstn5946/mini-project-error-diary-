@@ -1,5 +1,5 @@
 // 시리즈 API 호출 (팀원 1). 컴포넌트에서 fetch를 직접 쓰지 않고 이 파일을 거친다.
-import { DELETE_FAILED, JSON_HEADERS, RENAME_FAILED, send } from './apiError'
+import { DELETE_FAILED, GONE_OR_TAKEN, RENAME_FAILED, jsonInit, request } from '../../api'
 import type { ErrorListItem } from './errorsApi'
 
 // A-004 GET /api/series 응답 항목 (API-SPEC_7 6절)
@@ -14,8 +14,7 @@ export type Series = {
 
 // 최근 만든 순 목록. 서버 오류·네트워크 오류면 예외를 던지므로 호출하는 쪽에서 처리한다.
 export async function fetchSeries(signal?: AbortSignal): Promise<Series[]> {
-  const res = await fetch('/api/series', { signal })
-  if (!res.ok) throw new Error(`GET /api/series ${res.status}`)
+  const res = await request('/api/series', { signal })
   return (await res.json()) as Series[]
 }
 
@@ -25,17 +24,13 @@ export async function updateSeries(
   id: number,
   change: { name?: string; description?: string | null },
 ): Promise<Series> {
-  const res = await send(
-    `/api/series/${id}`,
-    { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(change) },
-    RENAME_FAILED,
-  )
+  const res = await request(`/api/series/${id}`, jsonInit('PATCH', change), RENAME_FAILED, GONE_OR_TAKEN)
   return (await res.json()) as Series
 }
 
 // A-013 DELETE /api/series/{id}. 속한 기록은 남고 시리즈 소속만 비워진다 (D-050)
 export async function deleteSeries(id: number): Promise<void> {
-  await send(`/api/series/${id}`, { method: 'DELETE' }, DELETE_FAILED)
+  await request(`/api/series/${id}`, { method: 'DELETE' }, DELETE_FAILED, GONE_OR_TAKEN)
 }
 
 const REORDER_FAILED = '순서를 바꾸지 못했어요. 다시 시도해 주세요.'
@@ -43,18 +38,13 @@ const REORDER_FAILED = '순서를 바꾸지 못했어요. 다시 시도해 주�
 // A-008 GET /api/errors?series_id=N. 그 시리즈의 기록을 시리즈 안 순서대로 (D-042, D-051).
 // 서버 오류·네트워크 오류면 예외를 던지므로 호출하는 쪽에서 처리한다.
 export async function listSeriesErrors(seriesId: number, signal?: AbortSignal): Promise<ErrorListItem[]> {
-  const res = await fetch(`/api/errors?series_id=${seriesId}`, { signal })
-  if (!res.ok) throw new Error(`GET /api/errors?series_id=${seriesId} ${res.status}`)
+  const res = await request(`/api/errors?series_id=${seriesId}`, { signal })
   return (await res.json()) as ErrorListItem[]
 }
 
 // A-014 PUT /api/series/{id}/order. 그 시리즈의 기록 ID 전체를 원하는 순서로 보내 바꿔 끼운다 (D-051).
 // 실패하면 화면에 보여줄 문구를 담은 ApiError를 던진다 (없는 시리즈 404, 기록이 맞지 않으면 422)
 export async function reorderSeries(seriesId: number, errorIds: number[]): Promise<ErrorListItem[]> {
-  const res = await send(
-    `/api/series/${seriesId}/order`,
-    { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ error_ids: errorIds }) },
-    REORDER_FAILED,
-  )
+  const res = await request(`/api/series/${seriesId}/order`, jsonInit('PUT', { error_ids: errorIds }), REORDER_FAILED, GONE_OR_TAKEN)
   return (await res.json()) as ErrorListItem[]
 }

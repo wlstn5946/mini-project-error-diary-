@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react'
-import { ApiError } from './apiError'
+import { ApiError } from '../../api'
 import { updateSeries, type Series } from './seriesApi'
 
 // 시리즈 이름·설명 수정 폼 (S-002, D-054). 관리 모달과 시리즈별 보기에서 같이 쓴다.
