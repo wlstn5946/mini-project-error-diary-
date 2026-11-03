@@ -1,19 +1,22 @@
 import { useState } from 'react'
 import { RESULT_LABELS, type AttemptBody, type AttemptResult } from './solveApi'
 
-// 시도 N 기록하기 (R-004, 시안 ②). 저장과 AI 재호출은 부모가 한다.
+// 시도 N 기록하기 (R-004, 시안 ②). 저장 없이 화면에 모아 두기만 한다. "기록 저장"과 "다음 방법 제안받기"는 부모가 처리한다 (D-064).
 // 새 시도로 넘어가면 부모가 key를 바꿔 입력칸을 비운다.
 
 type Props = {
   seq: number
   saving: boolean
   error: string | null
-  onSubmit: (body: AttemptBody) => void
+  // "기록 저장": 모아 둔 시도와 이번 시도를 저장한다. summary는 해결됨이면 필수, 그 밖에는 선택(비면 null)
+  onSave: (body: AttemptBody) => void
+  // "해결 안 됨 → 다음 방법 제안받기": 이번 시도를 모아 두고 AI에게 다시 묻는다 (저장하지 않는다)
+  onNext: (body: AttemptBody) => void
 }
 
 const RESULTS: AttemptResult[] = ['solved', 'failed', 'partial']
 
-function AttemptForm({ seq, saving, error, onSubmit }: Props) {
+function AttemptForm({ seq, saving, error, onSave, onNext }: Props) {
   const [action, setAction] = useState('')
   const [result, setResult] = useState<AttemptResult | null>(null)
   const [summary, setSummary] = useState('')
@@ -22,9 +25,14 @@ function AttemptForm({ seq, saving, error, onSubmit }: Props) {
   // "해결됨"이면 한 줄 정리가 필수다 (D-026)
   const missing = !action.trim() ? '무엇을 했는지 입력해 주세요.' : !result ? '결과를 골라 주세요.' : solved && !summary.trim() ? '해결됨으로 저장하려면 한 줄 정리를 입력해 주세요.' : null
 
-  function submit() {
+  function save() {
     if (missing || saving || !result) return
-    onSubmit({ action: action.trim(), result, summary: solved ? summary.trim() : null })
+    onSave({ action: action.trim(), result, summary: summary.trim() || null })
+  }
+
+  function next() {
+    if (missing || saving || !result) return
+    onNext({ action: action.trim(), result, summary: null })
   }
 
   return (
@@ -56,7 +64,7 @@ function AttemptForm({ seq, saving, error, onSubmit }: Props) {
       </fieldset>
 
       <label className="field-label" htmlFor="attempt-summary">
-        내 말로 한 줄 정리 <span className="attempt-required">(해결 시 필수)</span>
+        내 말로 한 줄 정리 {solved ? <span className="attempt-required">(필수)</span> : '(선택)'}
       </label>
       <input
         id="attempt-summary"
@@ -68,14 +76,13 @@ function AttemptForm({ seq, saving, error, onSubmit }: Props) {
       />
 
       <div className="attempt-actions">
-        {/* 결과에 따라 버튼 하나만 보인다. 일부 해결은 해결 안 됨과 같다 (D-029) */}
-        {result === null || solved ? (
-          <button type="button" className="btn-primary" disabled={Boolean(missing) || saving} onClick={submit}>
-            {saving ? '저장 중…' : '기록 저장'}
-          </button>
-        ) : (
-          <button type="button" className="btn-secondary" disabled={Boolean(missing) || saving} onClick={submit}>
-            {saving ? '저장 중…' : '해결 안 됨 → 다음 방법 제안받기'}
+        {/* 해결됨은 "기록 저장"만, 해결 안 됨·일부 해결은 "기록 저장"과 "다음 방법 제안받기" 둘 다 보인다 (D-029, D-064) */}
+        <button type="button" className="btn-primary" disabled={Boolean(missing) || saving} onClick={save}>
+          {saving ? '저장 중…' : '기록 저장'}
+        </button>
+        {result !== null && !solved && (
+          <button type="button" className="btn-secondary" disabled={Boolean(missing) || saving} onClick={next}>
+            해결 안 됨 → 다음 방법 제안받기
           </button>
         )}
       </div>

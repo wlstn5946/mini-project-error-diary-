@@ -8,6 +8,8 @@ type Props = {
   detail: Detail
   // 제목 줄 아래 버튼 영역(삭제, 이후 수정). 상태를 가진 쪽(페이지)이 채운다.
   actions?: ReactNode
+  // "✨ AI 피드백" 칸. 한 줄 정리 아래에 둔다 (D-064). 상태를 가진 쪽(페이지)이 채운다.
+  feedbackSection?: ReactNode
 }
 
 // 제목은 에러 메시지의 첫 줄 (목록과 같은 규칙)
@@ -21,7 +23,7 @@ function timeLabel(iso: string) {
   return `${m}월 ${d}일 ${iso.slice(11, 16)}`
 }
 
-function ErrorDetail({ detail, actions }: Props) {
+function ErrorDetail({ detail, actions, feedbackSection }: Props) {
   return (
     <article className="detail">
       <header className="detail-header">
@@ -70,13 +72,15 @@ function ErrorDetail({ detail, actions }: Props) {
         {detail.attempts.length === 0 && <p className="hint">아직 기록한 시도가 없어요.</p>}
       </section>
 
-      {/* 한 줄 정리는 해결된 에러만 */}
-      {detail.status === 'resolved' && detail.summary && (
+      {/* 한 줄 정리는 상태와 상관없이 있으면 보여준다 (D-064) */}
+      {detail.summary && (
         <section className="detail-summary">
           <h3 className="detail-label">내 한 줄 정리</h3>
           <p className="ai-text">{detail.summary}</p>
         </section>
       )}
+
+      {feedbackSection}
     </article>
   )
 }
