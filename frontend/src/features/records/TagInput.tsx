@@ -16,6 +16,8 @@ type Props = {
   onChange: (value: TagsValue) => void
   // 에러가 저장된 뒤에는 고칠 수 없게 잠근다 (D-034)
   disabled?: boolean
+  // 기록 수정(A-010)에서 현재 태그를 처음부터 채워 두는 용도. 없으면 빈 상태로 시작한다.
+  initialTags?: { id: number; name: string }[]
 }
 
 type Status = 'loading' | 'ready' | 'error'
@@ -36,11 +38,11 @@ function tagKey(name: string) {
   return normalizeTag(name).toLowerCase()
 }
 
-function TagInput({ onChange, disabled = false }: Props) {
+function TagInput({ onChange, disabled = false, initialTags }: Props) {
   const [status, setStatus] = useState<Status>('loading')
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [reloadKey, setReloadKey] = useState(0)
-  const [chips, setChips] = useState<Chip[]>([])
+  const [chips, setChips] = useState<Chip[]>(() => (initialTags ?? []).map((t) => ({ id: t.id, name: t.name })))
   const [text, setText] = useState('')
   const [notice, setNotice] = useState<Notice | null>(null)
   // 자동 완성 목록에서 ↑↓로 고른 위치. -1이면 고르지 않음

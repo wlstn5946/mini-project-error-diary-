@@ -124,27 +124,108 @@
 .record-main {
   display: flex;
   min-width: 0;
+  flex: 1;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
+}
+
+/* 윗줄: 상태 배지 + 제목 */
+.record-head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
 }
 
 .record-title {
+  min-width: 0;
   overflow: hidden;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* 아랫줄: 시리즈 · 날짜 · 시도 횟수 · 태그 */
 .record-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-sub);
+  font-size: 12px;
+}
+
+.record-series {
+  padding: 0 7px;
+  border-radius: 4px;
+  background: #fff1e0;
+  color: #b45309;
+  font-weight: 700;
+}
+
+.record-tag {
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+/* 내 기록 탭 (날짜별 / 태그별 / 시리즈별). 고른 탭은 어두운 바탕 (시안 내기록창) */
+.view-tabs {
+  display: flex;
+  margin-bottom: 16px;
+  overflow: hidden;
+  border: 1px solid #1f2937;
+  border-radius: 6px;
+}
+
+.view-tab {
+  flex: 1;
+  padding: 8px 0;
+  border: 0;
+  background: var(--bg);
+  color: var(--text-sub);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.view-tab + .view-tab {
+  border-left: 1px solid var(--border);
+}
+
+.view-tab[aria-selected='true'] {
+  background: #1f2937;
+  color: #fff;
+  font-weight: 700;
+}
+
+/* 태그별 보기 (D-055, 시안 내기록창 ②) */
+.tag-view-caption {
+  margin: 0 0 8px;
   color: var(--text-sub);
   font-size: 13px;
 }
 
-.record-tag {
-  color: #3730a3;
+.tag-chip[aria-pressed='true'] {
+  border-color: #2447d6;
+  background: #2447d6;
+  color: #fff;
+}
+
+.chip-count {
+  margin-left: 4px;
+  opacity: 0.7;
+  font-size: 12px;
+}
+
+.tag-view-heading {
+  margin: 18px 0 4px;
+  font-size: 15px;
+}
+
+.tag-view .hint {
+  margin: 12px 0 0;
 }
 
 /* 에러 일기 상세 (시안 내기록창 ④) */
@@ -185,32 +266,54 @@
   font-size: 15px;
 }
 
-.detail-attempts {
-  margin: 0;
+/* 시도별 타임라인: 점은 결과 색, 선은 점을 잇는다 */
+.timeline {
+  margin: 0 0 0 6px;
   padding: 0;
   list-style: none;
 }
 
-.detail-attempt {
+.timeline-item {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
-  padding: 10px 12px;
-  border-left: 3px solid #fca5a5;
-  background: var(--sidebar-bg);
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 0 16px 20px;
+  border-left: 2px solid var(--border);
 }
 
-.detail-attempt + .detail-attempt {
-  margin-top: 8px;
+.timeline-item:last-child {
+  padding-bottom: 0;
+  border-left-color: transparent;
 }
 
-.detail-attempt.partial {
-  border-left-color: #fcd34d;
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: -7px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 2px var(--bg);
 }
 
-.detail-attempt.solved {
-  border-left-color: #22c55e;
+.timeline-item.partial::before {
+  background: #f59e0b;
+}
+
+.timeline-item.solved::before {
+  background: #22c55e;
+}
+
+.timeline-time {
+  color: var(--text-sub);
+  font-size: 13px;
+}
+
+.timeline-text {
+  word-break: break-word;
 }
 
 .attempt-result-badge {
@@ -230,17 +333,6 @@
 .attempt-result-badge.solved {
   background: #dcfce7;
   color: #166534;
-}
-
-.detail-attempt-action {
-  flex: 1;
-  min-width: 200px;
-  word-break: break-word;
-}
-
-.detail-attempt-time {
-  color: var(--text-sub);
-  font-size: 13px;
 }
 
 .detail-summary {
@@ -429,4 +521,177 @@
   margin: 0;
   color: #b91c1c;
   font-size: 14px;
+}
+
+/* 시리즈별 보기 (시안 내기록창_예시.png 참고) */
+.series-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.series-card {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.series-card:hover {
+  border-color: #93a4f4;
+  background: #f5f7ff;
+}
+
+.series-card[aria-pressed='true'] {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.series-card-name {
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.series-card-count {
+  margin-top: auto;
+  color: #3730a3;
+  font-size: 13px;
+}
+
+.series-detail {
+  margin-top: 20px;
+}
+
+/* 시리즈 지정 방법 안내 */
+.series-guide {
+  margin-top: 24px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--sidebar-bg);
+  color: var(--text-sub);
+  font-size: 13px;
+}
+
+.series-guide-title {
+  margin: 0 0 6px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.series-guide ul {
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.7;
+}
+
+.series-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.series-name {
+  margin: 0;
+  font-size: 18px;
+  word-break: break-word;
+}
+
+.series-desc {
+  margin: 4px 0 0;
+  color: var(--text-sub);
+  font-size: 14px;
+}
+
+.series-detail .manage-edit {
+  margin-bottom: 12px;
+}
+
+.series-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.series-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.series-no {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.series-link {
+  min-width: 0;
+  flex: 1;
+  border-bottom: 0;
+}
+
+.series-arrows {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.arrow-btn {
+  padding: 2px 9px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 기록 수정 편집 모드 (S-003, A-010) */
+.edit-form {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.edit-situation {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+}
+
+.edit-error {
+  margin: 0;
+  color: #b91c1c;
+  font-size: 14px;
+}
+
+.edit-buttons {
+  display: flex;
+  gap: 8px;
 }

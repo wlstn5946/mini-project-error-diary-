@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { ErrorStatus } from './errorsApi'
+import { listErrors, type ErrorStatus } from './errorsApi'
 import { fetchTags, type Tag } from './tagsApi'
 
 // 내 기록 검색·필터 (S-002, 시안 내기록창 ①②). 값은 부모가 URL 쿼리로 들고 있다 (D-036).
@@ -35,6 +35,21 @@ function RecordFilters({
   const [tagStatus, setTagStatus] = useState<TagStatus>('loading')
   const [tags, setTags] = useState<Tag[]>([])
   const [reloadKey, setReloadKey] = useState(0)
+  // 상태 칩 옆 개수 (시안 ①). 필터와 상관없는 전체 기록 기준이다. 못 불러오면 개수만 숨긴다.
+  const [counts, setCounts] = useState<Record<'all' | ErrorStatus, number> | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    listErrors({ status: null, tagIds: [], q: '' }, controller.signal)
+      .then((items) => {
+        const resolved = items.filter((item) => item.status === 'resolved').length
+        setCounts({ all: items.length, resolved, unresolved: items.length - resolved })
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setCounts(null)
+      })
+    return () => controller.abort()
+  }, [reloadSignal])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -77,6 +92,7 @@ function RecordFilters({
             onClick={() => onStatusChange(chip.value)}
           >
             {chip.label}
+            {counts && <span className="chip-count">{counts[chip.value ?? 'all']}</span>}
           </button>
         ))}
       </div>
@@ -101,6 +117,7 @@ function RecordFilters({
               onClick={() => onToggleTag(tag.id)}
             >
               #{tag.name}
+              <span className="chip-count">{tag.error_count}</span>
             </button>
           ))}
       </div>

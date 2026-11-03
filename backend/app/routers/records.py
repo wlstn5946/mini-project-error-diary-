@@ -1,7 +1,7 @@
-"""팀원 1 (찾기·정리): A-002, A-003, A-004, A-008, A-009, A-011, A-012, A-013 (API-SPEC 5절).
+"""팀원 1 (찾기·정리): A-002, A-003, A-004, A-008, A-009, A-010, A-011, A-012, A-013, A-014 (API-SPEC 5절).
 
 경로는 /errors, /errors/search 처럼 전체 상대 경로로 적는다. prefix(/api)는 main.py에서 붙인다.
-이번 범위는 A-002(POST /errors), A-003(POST /errors/search), A-004(GET /series, GET /tags), A-008(GET /errors), A-009(GET /errors/{id}), A-011(DELETE /errors/{id}), A-012(PATCH·DELETE /tags/{id}), A-013(PATCH·DELETE /series/{id})를 구현한다.
+이번 범위는 A-002(POST /errors), A-003(POST /errors/search), A-004(GET /series, GET /tags), A-008(GET /errors), A-009(GET /errors/{id}), A-010(PATCH /errors/{id}), A-011(DELETE /errors/{id}), A-012(PATCH·DELETE /tags/{id}), A-013(PATCH·DELETE /series/{id}), A-014(PUT /series/{id}/order)를 구현한다.
 A-003(/errors/search)은 A-009(/errors/{error_id})보다 위에 선언한다. 먼저 선언한 경로가 먼저 매칭되기 때문이다.
 SQL은 이 파일에 쓰지 않고 backend/app/repositories/에만 둔다. (D-016)
 """
@@ -240,6 +240,8 @@ class ErrorListItem(BaseModel):
     error_message: str
     status: str
     series: NamedItem | None
+    # 시리즈 안 순서. 시리즈가 없으면 None. 화면은 이 값이 아니라 목록 위치를 순서 번호로 보여준다. (D-051)
+    series_order: int | None
     tags: list[NamedItem]
     attempt_count: int
     created_at: str
@@ -273,6 +275,7 @@ def _list_items(db: Session, errors: list[ErrorRecord]) -> list[ErrorListItem]:
             error_message=error.error_message,
             status=error.status,
             series=NamedItem.model_validate(series[error.series_id]) if error.series_id in series else None,
+            series_order=error.series_order,
             tags=[NamedItem.model_validate(tag) for tag in tags[error.id]],
             attempt_count=counts[error.id],
             created_at=error.created_at,
@@ -289,10 +292,12 @@ def list_errors(
     # 고른 태그를 모두 가진 에러만. 없는 태그 ID면 빈 결과다 (필터 결과로 본다).
     tag_id: list[int] = Query(default=[]),
     q: str | None = Query(default=None, max_length=200),
+    # 그 시리즈의 에러만, 시리즈 안 순서대로. 없는 시리즈 ID면 빈 결과다. (D-042, D-051)
+    series_id: int | None = None,
     db: Session = Depends(get_db),
 ) -> list[ErrorListItem]:
     keyword = (q or "").strip() or None
-    errors = errors_repo.list_errors(db, status, list(dict.fromkeys(tag_id)), keyword)
+    errors = errors_repo.list_errors(db, status, list(dict.fromkeys(tag_id)), keyword, series_id)
     return _list_items(db, errors)
 
 
@@ -309,6 +314,64 @@ def get_error_detail(error_id: int, db: Session = Depends(get_db)) -> ErrorDetai
         summary=error.summary,
         attempts=[AttemptItem.model_validate(attempt) for attempt in attempts_repo.list_attempts(db, error.id)],
     )
+
+
+class ErrorUpdateRequest(BaseModel):
+    """보낸 필드만 바꾼다. error_message는 받지 않는다(보내도 무시). 시리즈는 series_id와 new_series_name 중 하나만."""
+
+    situation: str | None = None
+    series_id: int | None = None
+    new_series_name: str | None = None
+    tag_ids: list[int] | None = None
+    new_tag_names: list[str] | None = None
+
+
+# A-010 기록 수정 (R-005, D-047, D-048). 태그·시리즈·상황만 고친다. 먼저 모두 검사하고 한 트랜잭션으로 바꾼다.
+@router.patch("/errors/{error_id}", response_model=ErrorDetailResponse)
+def update_error(error_id: int, body: ErrorUpdateRequest, db: Session = Depends(get_db)) -> ErrorDetailResponse:
+    error = errors_repo.get_error(db, error_id)
+    if error is None:
+        raise HTTPException(status_code=404, detail="에러 기록을 찾을 수 없어요.")
+    sent = body.model_fields_set
+
+    set_situation = "situation" in sent
+    situation = (body.situation or "").strip() or None
+
+    if body.series_id is not None and body.new_series_name is not None:
+        raise _invalid("시리즈는 series_id와 new_series_name 중 하나만 보내 주세요.")
+    set_series = "series_id" in sent or "new_series_name" in sent
+    series = None
+    new_series_name = None
+    if body.series_id is not None:
+        series = series_repo.get_series(db, body.series_id)
+        if series is None:
+            raise _invalid("없는 시리즈예요.")
+    elif body.new_series_name is not None:
+        new_series_name = body.new_series_name.strip()
+        if not new_series_name:
+            raise _invalid("새 시리즈 이름이 비어 있어요.")
+        series = series_repo.find_series_by_name(db, new_series_name)
+
+    tags = None
+    new_tag_names: list[str] = []
+    if "tag_ids" in sent or "new_tag_names" in sent:
+        tags, new_tag_names = _resolve_tags(db, body.tag_ids or [], body.new_tag_names or [])
+
+    if series is None and new_series_name:
+        series = series_repo.create_series(db, new_series_name)
+    if tags is not None:
+        tags += [tags_repo.create_tag(db, name) for name in new_tag_names]
+    errors_repo.update_error(
+        db,
+        error,
+        set_situation=set_situation,
+        situation=situation,
+        set_series=set_series,
+        series_id=series.id if series else None,
+        tag_ids=[tag.id for tag in tags] if tags is not None else None,
+    )
+    db.commit()
+    return get_error_detail(error_id, db)
 
 
 # A-011 기록 삭제 (R-005, D-043, D-044). 시도·태그 연결까지 한 트랜잭션으로 지운다. 쓰이지 않게 된 태그·시리즈는 남긴다. (D-046)
@@ -397,3 +460,19 @@ def delete_series(series_id: int, db: Session = Depends(get_db)) -> None:
         raise HTTPException(status_code=404, detail="시리즈를 찾을 수 없어요.")
     series_repo.delete_series(db, series)
     db.commit()
+
+
+class SeriesOrderRequest(BaseModel):
+    # 그 시리즈의 에러 ID 전체를 원하는 순서대로
+    error_ids: list[int]
+
+
+# A-014 시리즈 안 순서 바꾸기 (R-005, D-051). 전체를 바꿔 끼운다. ID가 그 시리즈의 에러와 정확히 같지 않으면 422.
+@router.put("/series/{series_id}/order", response_model=list[ErrorListItem])
+def reorder_series(series_id: int, body: SeriesOrderRequest, db: Session = Depends(get_db)) -> list[ErrorListItem]:
+    if series_repo.get_series(db, series_id) is None:
+        raise HTTPException(status_code=404, detail="시리즈를 찾을 수 없어요.")
+    if not errors_repo.reorder_series(db, series_id, body.error_ids):
+        raise _invalid("순서를 바꿀 기록이 시리즈의 기록과 맞지 않아요. 화면을 새로 고쳐 주세요.")
+    db.commit()
+    return _list_items(db, errors_repo.list_errors(db, None, [], None, series_id))

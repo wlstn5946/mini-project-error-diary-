@@ -1,4 +1,5 @@
 // 에러 등록 API 호출 (팀원 1). 컴포넌트에서 fetch를 직접 쓰지 않고 이 파일을 거친다.
+import { JSON_HEADERS, send } from './apiError'
 
 // A-002 POST /api/errors 요청 (API-SPEC_5 6절)
 export type ErrorCreateBody = {
@@ -59,6 +60,8 @@ export type ErrorListItem = {
   error_message: string
   status: ErrorStatus
   series: NamedItem | null
+  // 시리즈 안 순서. 시리즈가 없으면 null (D-051)
+  series_order: number | null
   tags: NamedItem[]
   attempt_count: number
   created_at: string
@@ -125,6 +128,27 @@ export async function searchSimilarErrors(errorMessage: string): Promise<Similar
   } catch {
     return null
   }
+}
+
+// A-010 PATCH /api/errors/{id} 요청. 보낸 필드만 바뀐다. 태그는 둘 중 하나라도 보내면 통째로 바뀐다 (API-SPEC_7).
+export type ErrorUpdateBody = {
+  situation?: string | null
+  series_id?: number | null
+  new_series_name?: string
+  tag_ids?: number[]
+  new_tag_names?: string[]
+}
+
+const UPDATE_FAILED = '저장하지 못했어요. 잠시 뒤 다시 시도해 주세요.'
+
+// A-010. 성공하면 바뀐 상세(A-009 모양)를 돌려준다. 실패하면 화면에 보여줄 문구를 담은 ApiError를 던진다 (이미 삭제됨 404).
+export async function updateError(id: number, change: ErrorUpdateBody): Promise<ErrorDetail> {
+  const res = await send(
+    `/api/errors/${id}`,
+    { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(change) },
+    UPDATE_FAILED,
+  )
+  return (await res.json()) as ErrorDetail
 }
 
 export type DeleteResult = 'deleted' | 'not-found'

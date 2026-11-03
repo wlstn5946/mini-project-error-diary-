@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { ApiError } from './apiError'
 import ConfirmDialog from './ConfirmDialog'
-import { deleteSeries, fetchSeries, updateSeries, type Series } from './seriesApi'
+import SeriesEditForm from './SeriesEditForm'
+import { deleteSeries, fetchSeries, type Series } from './seriesApi'
 import { deleteTag, fetchTags, renameTag, type Tag } from './tagsApi'
 
 // "⚙ 관리" 모달 (S-002, D-042). 태그·시리즈 이름 변경과 삭제를 한다. 메뉴는 늘리지 않는다 (D-005).
@@ -119,74 +120,19 @@ type SeriesRowProps = {
 
 function SeriesRow({ series, onUpdated, onAskDelete, onGone }: SeriesRowProps) {
   const [editing, setEditing] = useState(false)
-  const [name, setName] = useState(series.name)
-  const [description, setDescription] = useState(series.description ?? '')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  function startEdit() {
-    setName(series.name)
-    setDescription(series.description ?? '')
-    setError(null)
-    setEditing(true)
-  }
-
-  async function save(e: FormEvent) {
-    e.preventDefault()
-    if (saving || !name.trim()) return
-    setSaving(true)
-    setError(null)
-    try {
-      // 설명을 비우면 null로 보내 지운다 (D-054)
-      const updated = await updateSeries(series.id, { name, description: description.trim() ? description : null })
-      setEditing(false)
-      onUpdated(updated)
-    } catch (err) {
-      if (isGone(err)) onGone()
-      else setError(messageOf(err))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Escape') {
-      e.preventDefault()
-      e.stopPropagation()
-      setEditing(false)
-    }
-  }
 
   if (editing) {
     return (
       <li className="manage-row">
-        <form className="manage-edit" onSubmit={save}>
-          <input
-            className="manage-input"
-            aria-label="시리즈 이름"
-            value={name}
-            disabled={saving}
-            autoFocus
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={onKeyDown}
-          />
-          <input
-            className="manage-input"
-            aria-label="시리즈 설명"
-            placeholder="설명 (선택)"
-            value={description}
-            disabled={saving}
-            onChange={(e) => setDescription(e.target.value)}
-            onKeyDown={onKeyDown}
-          />
-          <button type="submit" className="btn-primary manage-btn" disabled={saving || !name.trim()}>
-            {saving ? '저장 중…' : '저장'}
-          </button>
-          <button type="button" className="btn-secondary manage-btn" disabled={saving} onClick={() => setEditing(false)}>
-            취소
-          </button>
-          {error && <p className="manage-error">{error}</p>}
-        </form>
+        <SeriesEditForm
+          series={series}
+          onSaved={(updated) => {
+            setEditing(false)
+            onUpdated(updated)
+          }}
+          onCancel={() => setEditing(false)}
+          onGone={onGone}
+        />
       </li>
     )
   }
@@ -197,7 +143,7 @@ function SeriesRow({ series, onUpdated, onAskDelete, onGone }: SeriesRowProps) {
         {series.description && <span className="manage-desc">{series.description}</span>}
       </span>
       <span className="manage-count">{series.error_count}개 기록</span>
-      <button type="button" className="btn-secondary manage-btn" onClick={startEdit}>
+      <button type="button" className="btn-secondary manage-btn" onClick={() => setEditing(true)}>
         이름·설명 수정
       </button>
       <button type="button" className="btn-danger manage-btn" onClick={onAskDelete}>

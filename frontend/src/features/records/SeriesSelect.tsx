@@ -15,6 +15,8 @@ type Props = {
   onChange: (choice: SeriesChoice | null) => void
   // 에러가 저장된 뒤에는 고칠 수 없게 잠근다 (D-034)
   disabled?: boolean
+  // 기록 수정(A-010)에서 현재 시리즈를 처음부터 골라 두는 용도. 없으면 "선택 안 함"으로 시작한다.
+  initialSeriesId?: number | null
 }
 
 type Status = 'loading' | 'ready' | 'error'
@@ -25,13 +27,13 @@ function sameName(a: string, b: string) {
   return a.trim().toLowerCase() === b.trim().toLowerCase()
 }
 
-function SeriesSelect({ onChange, disabled = false }: Props) {
+function SeriesSelect({ onChange, disabled = false, initialSeriesId = null }: Props) {
   const [status, setStatus] = useState<Status>('loading')
   const [seriesList, setSeriesList] = useState<Series[]>([])
   const [reloadKey, setReloadKey] = useState(0)
   const [mode, setMode] = useState<Mode>('select')
   // <select>의 value. ''이면 "선택 안 함"
-  const [selectedId, setSelectedId] = useState('')
+  const [selectedId, setSelectedId] = useState(initialSeriesId === null ? '' : String(initialSeriesId))
   const [newName, setNewName] = useState('')
 
   useEffect(() => {

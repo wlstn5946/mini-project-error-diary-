@@ -21,9 +21,15 @@ def list_errors(
     status: Literal["unresolved", "resolved"] | None,
     tag_ids: list[int],
     q: str | None,
+    series_id: int | None = None,
 ) -> list[ErrorRecord]:
-    """내 기록 목록 (A-008). 최근 등록 순, 같으면 id가 큰 것이 먼저. tag_ids는 중복 없이 넘긴다."""
+    """내 기록 목록 (A-008). 최근 등록 순, 같으면 id가 큰 것이 먼저. tag_ids는 중복 없이 넘긴다.
+
+    series_id가 있으면 그 시리즈의 에러만, 시리즈 안 순서(series_order)대로 돌려준다. (D-042, D-051)
+    """
     query = select(ErrorRecord)
+    if series_id is not None:
+        query = query.where(ErrorRecord.series_id == series_id)
     if status:
         query = query.where(ErrorRecord.status == status)
     if q:
@@ -38,7 +44,10 @@ def list_errors(
             .having(func.count() == len(tag_ids))
         )
         query = query.where(ErrorRecord.id.in_(has_all_tags))
-    query = query.order_by(ErrorRecord.created_at.desc(), ErrorRecord.id.desc())
+    if series_id is not None:
+        query = query.order_by(ErrorRecord.series_order, ErrorRecord.id)
+    else:
+        query = query.order_by(ErrorRecord.created_at.desc(), ErrorRecord.id.desc())
     return list(db.scalars(query))
 
 
@@ -70,8 +79,22 @@ def create_error(
     series_id: int | None,
     tag_ids: list[int],
 ) -> ErrorRecord:
-    """미해결 상태로 저장한다. 커밋은 호출하는 쪽에서 한다. 새 시리즈·태그와 한 트랜잭션으로 묶기 위해서다. (D-025)"""
-    error = ErrorRecord(error_message=error_message, situation=situation, series_id=series_id, status="unresolved")
+    """미해결 상태로 저장한다. 커밋은 호출하는 쪽에서 한다. 새 시리즈·태그와 한 트랜잭션으로 묶기 위해서다. (D-025)
+
+    시리즈에 넣으면 그 시리즈의 마지막 순서 + 1을 series_order로 매긴다. 에러를 만드는 어느 경로(에러 등록,
+    비슷한 기록의 "이 방법 적용")든 여기를 거치므로 순서 매기기는 이 한 곳에 둔다. (D-051)
+    """
+    series_order = None
+    if series_id is not None:
+        last = db.scalar(select(func.max(ErrorRecord.series_order)).where(ErrorRecord.series_id == series_id))
+        series_order = (last or 0) + 1
+    error = ErrorRecord(
+        error_message=error_message,
+        situation=situation,
+        series_id=series_id,
+        series_order=series_order,
+        status="unresolved",
+    )
     db.add(error)
     db.flush()
     db.add_all(ErrorTag(error_id=error.id, tag_id=tag_id) for tag_id in tag_ids)
@@ -84,6 +107,37 @@ def mark_resolved(db: Session, error: ErrorRecord, summary: str) -> None:
     error.status = "resolved"
     error.summary = summary
     error.resolved_at = now_kst()
+    db.flush()
+
+
+def update_error(
+    db: Session,
+    error: ErrorRecord,
+    *,
+    set_situation: bool,
+    situation: str | None,
+    set_series: bool,
+    series_id: int | None,
+    tag_ids: list[int] | None,
+) -> None:
+    """기록 수정 (A-010). set_*가 True인 항목만 바꾼다. tag_ids가 None이면 태그는 그대로, 목록이면 통째로 바꾼다.
+
+    시리즈를 다른 시리즈로 옮기면 새 시리즈의 마지막 순서 + 1을 받고, 같은 시리즈면 순서를 그대로 둔다.
+    시리즈를 비우면 series_order도 비운다. 커밋은 호출하는 쪽에서 한다. (D-051)
+    """
+    if set_situation:
+        error.situation = situation
+    if set_series and series_id != error.series_id:
+        # 순서는 series_id를 바꾸기 전에 구한다. 바꾼 뒤에 구하면 자동 flush로 이 에러의 옛 순서가 새 시리즈의 최댓값에 섞인다.
+        series_order = None
+        if series_id is not None:
+            last = db.scalar(select(func.max(ErrorRecord.series_order)).where(ErrorRecord.series_id == series_id))
+            series_order = (last or 0) + 1
+        error.series_id = series_id
+        error.series_order = series_order
+    if tag_ids is not None:
+        db.execute(delete(ErrorTag).where(ErrorTag.error_id == error.id))
+        db.add_all(ErrorTag(error_id=error.id, tag_id=tag_id) for tag_id in tag_ids)
     db.flush()
 
 
@@ -115,13 +169,32 @@ def count_errors_by_tag(db: Session) -> dict[int, int]:
 
 
 def clear_series(db: Session, series_id: int) -> None:
-    """시리즈를 지우기 전에 그 시리즈에 속한 에러의 소속을 비운다. 에러는 남는다. (D-050)
+    """시리즈를 지우기 전에 그 시리즈에 속한 에러의 소속(series_id)과 순서(series_order)를 비운다. 에러는 남는다. (D-050, D-051)
 
-    errors.series_order 컬럼이 생기면(D-051) 함께 비운다. 커밋은 호출하는 쪽에서 한다.
+    커밋은 호출하는 쪽에서 한다.
     """
-    db.execute(update(ErrorRecord).where(ErrorRecord.series_id == series_id).values(series_id=None))
+    db.execute(
+        update(ErrorRecord)
+        .where(ErrorRecord.series_id == series_id)
+        .values(series_id=None, series_order=None)
+    )
 
 
 def remove_tag_links(db: Session, tag_id: int) -> None:
     """태그를 지우기 전에 그 태그의 에러 연결을 모두 지운다. 에러는 남는다. (D-050) 커밋은 호출하는 쪽에서 한다."""
     db.execute(delete(ErrorTag).where(ErrorTag.tag_id == tag_id))
+
+
+def reorder_series(db: Session, series_id: int, error_ids: list[int]) -> bool:
+    """그 시리즈의 에러 전체를 error_ids 순서로 바꿔 끼운다. series_order를 1부터 다시 매긴다. (D-051)
+
+    error_ids가 그 시리즈에 속한 에러 ID와 정확히 같은 집합(중복·누락·다른 시리즈의 ID 없음)이 아니면
+    아무것도 바꾸지 않고 False를 돌려준다. 커밋은 호출하는 쪽에서 한다.
+    """
+    errors = {error.id: error for error in db.scalars(select(ErrorRecord).where(ErrorRecord.series_id == series_id))}
+    if len(error_ids) != len(set(error_ids)) or set(error_ids) != set(errors):
+        return False
+    for order, error_id in enumerate(error_ids, start=1):
+        errors[error_id].series_order = order
+    db.flush()
+    return True

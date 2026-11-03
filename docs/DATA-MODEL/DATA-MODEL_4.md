@@ -4,7 +4,7 @@
 - 테이블과 필드 규칙을 담는 문서다. 기능 설명은 PRD, 결정 이유는 DECISIONS에 있으므로 여기서는 R-, D-, Q- ID로만 가리킨다.
 - **이번 버전(v4)의 범위는 `series`, `tags`, `errors`, `error_tags`, `attempts` 테이블에 "시리즈 안 순서(`errors.series_order`)와 삭제·이름 변경 동작"을 더한 것이다.**
   - v3까지 구현됨 (`backend/app/models.py`). `errors`·`error_tags`는 A-002(팀원 1), `attempts`는 A-006(팀원 2)이 쓴다
-  - 에러·태그·시리즈 삭제와 태그·시리즈 이름 변경 동작은 구현됨. `errors.series_order`와 시리즈 순서 바꾸기는 정의만 됨(미구현)
+  - 에러·태그·시리즈 삭제, 태그·시리즈 이름 변경, `errors.series_order`와 시리즈 순서 바꾸기, 기존 DB에 컬럼 추가(D-052)까지 모두 구현됨
 - 이번 버전에서 다루지 않는 것:
   - 시도 출처 (`source`, D-032 Later)
   - 태그 합치기 (D-049 Later), 삭제 되돌리기(D-043)
@@ -15,7 +15,7 @@
 - 연결은 SQLAlchemy를 쓰고, 테이블 정의는 `backend/app/models.py`에 둔다. (D-013)
 - DB 파일 기본 경로는 `backend/data/error_diary.db`다. `.env`의 `DATABASE_PATH`로 바꿀 수 있다(상대 경로는 `backend/` 기준). (D-014)
 - 테이블은 서버가 시작될 때 없는 것만 만든다. 이미 있는 테이블의 구조는 바꾸지 않는다. (D-014)
-- 예외(D-052): 이미 만들어진 테이블에 새 컬럼이 생기면 `init_db()`가 서버 시작 때 **없는 컬럼만** `ALTER TABLE … ADD COLUMN`으로 추가한다. 컬럼 삭제·이름 변경·타입 변경은 하지 않는다. 추가한 컬럼의 기존 행 값은 필요하면 같은 때 채운다(`errors.series_order`는 아래 참고).
+- 예외(D-052): 이미 만들어진 테이블에 새 컬럼이 생기면 `init_db()`가 서버 시작 때 **없는 컬럼만** `ALTER TABLE … ADD COLUMN`으로 추가한다. 컬럼 삭제·이름 변경·타입 변경은 하지 않는다. 추가한 컬럼의 기존 행 값은 필요하면 같은 때 채운다(`errors.series_order`는 아래 참고). NULL을 허용하지 않는 컬럼은 기존 행에 채울 값이 없어 추가하지 않고 서버 시작을 멈춘다. 구현: `db.py`의 `_add_missing_columns()`, `_backfill_series_order()`.
 - SQLite 외래 키 검사를 연결마다 켠다(`PRAGMA foreign_keys = ON`). PostgreSQL과 동작을 맞추기 위해서다.
 - 날짜·시간은 ISO 8601 한국 시간 문자열로 저장한다. (D-015)
 
@@ -71,7 +71,7 @@
 | `error_message` | TEXT | NOT NULL | 에러 메시지·Traceback (입력 필수) |
 | `situation` | TEXT | NULL 허용 | 상황 (입력 선택, 시안 ① "상황 (선택)") |
 | `series_id` | INTEGER | FK → `series.id`, NULL 허용 | 시리즈 (입력 선택) |
-| `series_order` | INTEGER | NULL 허용. 시리즈가 없으면 NULL, 있으면 값이 있음 | 시리즈 안 순서 (D-051, 미구현) |
+| `series_order` | INTEGER | NULL 허용. 시리즈가 없으면 NULL, 있으면 값이 있음 | 시리즈 안 순서 (D-051) |
 | `status` | TEXT | NOT NULL, `unresolved` / `resolved`, 기본 `unresolved` | 해결 상태 (D-028) |
 | `summary` | TEXT | NULL 허용. `resolved`이면 반드시 값이 있음 | 내 한 줄 정리 (D-026) |
 | `resolved_at` | TEXT | NULL 허용. `resolved`이면 반드시 값이 있음 | 해결 시각. 한국 시간 ISO 8601 (D-015) |
@@ -125,7 +125,7 @@
 
 ### 삭제·이름 변경 동작 (D-043 ~ D-046, D-049, D-050)
 - 에러·태그·시리즈 삭제와 태그·시리즈 이름·설명 변경은 구현됨(`errors.delete_error()`, `tags.delete_tag()`·`rename_tag()`, `series.delete_series()`·`rename_series()`·`set_description()`).
-- 시리즈 삭제에서 `series_order`를 함께 비우는 것과 순서 바꾸기는 `series_order` 컬럼을 추가할 때(D-051, D-052) 구현한다. 지금은 `series_id`만 비운다.
+- 시리즈 삭제는 `series_id`와 `series_order`를 함께 비운다(`errors.clear_series()`). 순서 바꾸기는 `errors.reorder_series()`가 한다.
 외래 키 검사가 켜져 있고 `ON DELETE CASCADE`는 쓰지 않으므로(D-044), 지우는 순서를 코드(repository)에서 지킨다. 모든 삭제·이름 변경은 한 트랜잭션이고, 중간에 실패하면 아무것도 바뀌지 않는다.
 
 | 동작 | 처리 순서 |
@@ -153,3 +153,5 @@
 | v4 | 2026-11-02 | `errors.series_order` 정의(D-051: 시리즈에 넣을 때 마지막 순서 + 1, `create_error()` 한 곳에서 매김, 빈 번호는 그대로, 컬럼 추가 시 기존 행은 `created_at` 순으로 채움), 기존 DB에 없는 컬럼만 추가하는 예외(D-052), 삭제·이름 변경 동작 절 추가(D-043 ~ D-046, D-049, D-050, D-054). 모두 미구현 |
 | v4 | 2026-11-02 | 에러 삭제 동작 구현됨(`errors.delete_error()`, 시도 삭제는 `attempts.delete_by_error_id()`, D-044, D-045). 나머지(태그·시리즈 삭제·이름 변경, `series_order`)는 미구현 |
 | v4 | 2026-11-02 | 태그·시리즈 삭제와 이름·설명 변경 동작 구현됨(삭제는 연결·소속을 먼저 지우거나 비운 뒤 한 트랜잭션, 이름 변경은 `name`·`name_key` 함께). `series_order`와 관련된 부분(삭제 시 비우기, 순서 바꾸기)은 컬럼과 함께 구현 예정 |
+| v4 | 2026-11-03 | `errors.series_order` 구현됨: `create_error()`가 시리즈의 마지막 순서 + 1을 매김, `init_db()`가 기존 DB에 없는 컬럼만 추가하고 기존 행은 `created_at` 순으로 채움(다시 실행해도 덮어쓰지 않음), 시리즈 삭제 시 `series_order`도 비움, `reorder_series()`로 순서 바꾸기(1부터 다시 매김) |
+| v4 | 2026-11-03 | 기록 수정(A-010) 구현됨: `errors.update_error()`가 상황·시리즈·태그를 바꿈. 다른 시리즈로 옮기면 `series_order`는 새 시리즈의 마지막 + 1(옮기기 전에 구함), 시리즈를 떼면 `series_id`·`series_order` 모두 NULL, 태그는 `error_tags`를 모두 지우고 다시 넣음 |

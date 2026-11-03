@@ -7,6 +7,8 @@ type Props = {
   items: ErrorListItem[]
   // 상세에서 "← 내 기록"으로 돌아올 목록 주소 (필터 포함)
   backTo: string
+  // true면 날짜 제목 없이 한 줄로 보여준다 (태그별 보기)
+  flat?: boolean
 }
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
@@ -23,7 +25,58 @@ function dateLabel(date: string) {
   return `${m}월 ${d}일 (${WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]})`
 }
 
-function RecordList({ items, backTo }: Props) {
+// "2026-10-30T…" → "10/30"
+function shortDate(iso: string) {
+  const [, m, d] = iso.slice(0, 10).split('-').map(Number)
+  return `${m}/${d}`
+}
+
+type ContentProps = {
+  item: ErrorListItem
+  // 날짜 제목이 없는 목록(태그별, 시리즈별)에서는 항목에 날짜를 보여준다
+  showDate?: boolean
+  // 시리즈별 보기에서는 시리즈 이름이 겹치므로 숨긴다
+  showSeries?: boolean
+}
+
+// 항목의 내용: 윗줄에 상태 배지와 제목(첫 줄), 아랫줄에 시리즈·날짜·시도 횟수·태그. 모든 목록이 같이 쓴다.
+export function RecordItemContent({ item, showDate = false, showSeries = true }: ContentProps) {
+  return (
+    <span className="record-main">
+      <span className="record-head">
+        <span className={`status-badge ${item.status}`}>{STATUS_LABELS[item.status]}</span>
+        <span className="record-title">{firstLine(item.error_message)}</span>
+      </span>
+      <span className="record-meta">
+        {showSeries && item.series && <span className="record-series">{item.series.name}</span>}
+        {showDate && <span>{shortDate(item.created_at)}</span>}
+        <span>시도 {item.attempt_count}회</span>
+        {item.tags.map((tag) => (
+          <span key={tag.id} className="record-tag">
+            #{tag.name}
+          </span>
+        ))}
+      </span>
+    </span>
+  )
+}
+
+function RecordList({ items, backTo, flat = false }: Props) {
+  // 날짜 제목 없이 한 줄로 늘어놓는 목록 (태그별 보기)
+  if (flat) {
+    return (
+      <ul className="record-items">
+        {items.map((item) => (
+          <li key={item.id}>
+            <Link className="record-item" to={`/records/${item.id}`} state={{ backTo }}>
+              <RecordItemContent item={item} showDate />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
   // 서버가 최근 등록 순으로 주므로 순서대로 날짜별로 묶으면 최근 날짜가 위에 온다
   const groups: { date: string; items: ErrorListItem[] }[] = []
   for (const item of items) {
@@ -44,19 +97,7 @@ function RecordList({ items, backTo }: Props) {
             {group.items.map((item) => (
               <li key={item.id}>
                 <Link className="record-item" to={`/records/${item.id}`} state={{ backTo }}>
-                  <span className={`status-badge ${item.status}`}>{STATUS_LABELS[item.status]}</span>
-                  <span className="record-main">
-                    <span className="record-title">{firstLine(item.error_message)}</span>
-                    <span className="record-meta">
-                      {item.series && <span>{item.series.name}</span>}
-                      <span>시도 {item.attempt_count}회</span>
-                      {item.tags.map((tag) => (
-                        <span key={tag.id} className="record-tag">
-                          #{tag.name}
-                        </span>
-                      ))}
-                    </span>
-                  </span>
+                  <RecordItemContent item={item} />
                 </Link>
               </li>
             ))}
