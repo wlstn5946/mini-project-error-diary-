@@ -4,7 +4,7 @@
 
 ## 1. 프로젝트 소개
 - 에러 메시지를 입력하면 이전 해결 기록을 먼저 찾아 보여주고, 없으면 Gemini가 해결 방법을 제안하는 에러 해결 기록 앱 (상세: PRD 1절)
-- 기술 스택: FastAPI + React(Vite, TypeScript) + SQLite + Gemini API (D-001)
+- 기술 스택: FastAPI + React(Vite, TypeScript) + PostgreSQL(로컬, 이후 Supabase) + Gemini API (D-001, D-057, D-058)
 
 ## 2. 문서 지도
 | 문서 | 역할 | 경로 |
@@ -69,7 +69,8 @@
 - 백엔드 실행 (`backend/`에서, Python 3.12, uv 사용):
   - 가상환경: `uv venv --python 3.12 .venv`
   - 설치: `uv pip install --python .venv\Scripts\python.exe -r requirements.txt`
-  - 실행: `.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000`
+  - 실행: `.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000` 또는 `uv run uvicorn app.main:app --reload --port 8000` (`pyproject.toml`이 없어 `uv run`은 `.venv`를 그대로 쓰고 패키지를 설치하지 않는다)
+  - DB: `.env`의 `DATABASE_URL`에 PostgreSQL 접속 주소를 넣는다. 로컬은 `error_diary` DB를 먼저 만든다. (D-058, D-059)
 - 화면이 서버를 부르는 곳은 `frontend/src/api.ts`의 `request()` 한 곳이다. 기능별 `*Api.ts`는 `fetch`를 직접 쓰지 않고 `request()`를 거친다. (D-056)
 - 패키지를 추가하면 `requirements.txt`에 `==` 버전으로 고정한다.
 - 프론트 실행·빌드, 테스트 명령은 [결정 필요].
