@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router'
+import SidebarStats from './SidebarStats.tsx'
 
 // 메뉴는 두 개, 순서 고정 (D-005)
 const MENUS = [
@@ -23,6 +24,7 @@ function Sidebar() {
           </NavLink>
         ))}
       </nav>
+      <SidebarStats />
     </aside>
   )
 }
