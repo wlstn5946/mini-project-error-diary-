@@ -1,7 +1,8 @@
+import { Link } from 'react-router'
 import { keyLine } from '../../errorText'
 import type { SimilarError } from './errorsApi'
 
-// 비슷한 기존 기록 (시안 에러해결창_예시.png ①). "재사용 N회" 배지는 같은 해결법을 묶은 카드에 단다 (D-121). 시안의 "에러 일기 보기" 버튼은 이번 범위에서 뺐다 (SCREEN-SPEC_4).
+// 비슷한 기존 기록 (시안 에러해결창_예시.png ①). "재사용 N회" 배지는 같은 해결법을 묶은 카드에 단다 (D-121). "에러 일기 보기"는 대표 기록(뿌리)의 상세를 새 탭으로 연다. 입력 중인 내용을 지키기 위해서다 (D-127).
 // "해당 없음 → AI에게 묻기" 버튼은 입력창 쪽(SolvePage)에 하나만 둔다 (D-064).
 // 목록은 유사도 높은 순으로 오고, 위 두 개만 보이며 나머지는 스크롤로 본다 (CSS .similar-list).
 
@@ -54,9 +55,21 @@ function SimilarRecords({ matches, applyingId, busy, error, onApply }: Props) {
                 <p className="similar-solution">
                   💡 <strong>해결법:</strong> {m.summary}
                 </p>
-                <button type="button" className="btn-apply" disabled={busy} onClick={() => onApply(m)}>
-                  {applyingId === m.id ? '적용 중…' : '✔ 같은 에러예요, 이 방법 적용'}
-                </button>
+                <div className="similar-actions">
+                  <button type="button" className="btn-apply" disabled={busy} onClick={() => onApply(m)}>
+                    {applyingId === m.id ? '적용 중…' : '✔ 같은 에러예요, 이 방법 적용'}
+                  </button>
+                  {/* 새 탭: 같은 탭으로 이동하면 아직 저장하지 않은 입력이 사라진다 (D-127). 읽기만 하므로 busy여도 막지 않는다 */}
+                  <Link
+                    className="btn-secondary similar-diary-link"
+                    to={`/records/${m.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="에러 일기 보기 (새 탭에서 열림)"
+                  >
+                    에러 일기 보기 ↗
+                  </Link>
+                </div>
               </article>
             )
           })}
