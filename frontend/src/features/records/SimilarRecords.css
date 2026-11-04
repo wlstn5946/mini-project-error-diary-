@@ -105,7 +105,19 @@
 /* 버튼 모양·색은 index.css. 여기서는 카드 안 위치만 정한다 (해결법과 10px 이상 띄우고 왼쪽 정렬) */
 .btn-apply {
   align-self: flex-start;
+}
+
+/* "이 방법 적용" + "에러 일기 보기": 카드 아래쪽 한 줄, 좁으면 줄바꿈 (D-127) */
+.similar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-top: auto;
+}
+
+/* a 태그 밑줄을 없애고 btn-secondary 모양 그대로 */
+.similar-diary-link {
+  text-decoration: none;
 }
 
 /* "해당 없음 → AI에게 묻기": 위 24px 띄우고 오른쪽 정렬 */
