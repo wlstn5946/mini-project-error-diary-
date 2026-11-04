@@ -433,6 +433,8 @@ def create_attempts(
         raise HTTPException(status_code=422, detail="해결됨으로 저장하려면 한 줄 정리를 입력해 주세요.")
     reused_root_id = None
     if body.reused_from_id is not None:
+        if not solved:
+            raise HTTPException(status_code=422, detail="기존 기록의 방법으로 해결됐을 때만 원본과 연결할 수 있어요.")  # D-128
         try:
             reused_root_id = errors_repo.get_reuse_root_id(db, body.reused_from_id, error.id, user_id=user.id)
         except ValueError as exc:
