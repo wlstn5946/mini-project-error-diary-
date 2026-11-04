@@ -12,22 +12,47 @@ export const PASSWORD_RULE = `${PASSWORD_MIN}~${PASSWORD_MAX}자로 입력해 �
 // A-018 ~ A-021의 계정 응답. password_hash·토큰은 오지 않는다.
 export type AuthUser = { id: number; username: string; created_at: string }
 
+// 보안 질문·답 규칙 (서버 auth.py의 QUESTION_MAX, ANSWER_MAX와 같은 값, D-116)
+export const QUESTION_MAX = 50
+export const ANSWER_MAX = 20
+export const QUESTION_RULE = `1~${QUESTION_MAX}자로 입력해 주세요.`
+export const ANSWER_RULE = `1~${ANSWER_MAX}자로 입력해 주세요. 공백·대소문자는 구분하지 않아요.`
+
+// 서버의 security.normalize_answer()와 같은 규칙(NFC → 모든 공백 제거 → 소문자). 길이 안내용이고 판단은 서버가 한다.
+export function normalizeAnswer(answer: string): string {
+  return answer.normalize('NFC').replace(/\s+/g, '').toLowerCase()
+}
+// 파이썬 len()과 같게 글자(코드 포인트) 단위로 센다
+export function answerLength(answer: string): number {
+  return [...normalizeAnswer(answer)].length
+}
+
 // 서버가 422(규칙 위반)를 FastAPI 기본 검증 응답(detail 배열)으로 주므로, 화면에 보여줄 문구를 여기서 정한다.
-const REGISTER_KNOWN = { 422: `아이디는 ${USERNAME_RULE} 비밀번호는 ${PASSWORD_RULE}` }
+const REGISTER_KNOWN = {
+  422: `아이디는 ${USERNAME_RULE} 비밀번호는 ${PASSWORD_RULE} 보안 질문은 ${QUESTION_RULE} 보안 답변은 ${ANSWER_RULE}`,
+}
 
 async function readUser(res: Response): Promise<AuthUser> {
   return (await res.json()) as AuthUser
 }
 
 // A-018. 가입만 하고 로그인(쿠키)은 하지 않는다 (D-090). 같은 아이디면 서버 문구(409)가 ApiError에 담긴다.
-export async function register(username: string, password: string): Promise<AuthUser> {
-  const res = await request('/api/auth/register', jsonInit('POST', { username, password }), undefined, REGISTER_KNOWN)
+export async function register(
+  username: string,
+  password: string,
+  securityQuestion: string,
+  securityAnswer: string,
+): Promise<AuthUser> {
+  const body = { username, password, security_question: securityQuestion, security_answer: securityAnswer }
+  const res = await request('/api/auth/register', jsonInit('POST', body), undefined, REGISTER_KNOWN)
   return readUser(res)
 }
 
-// A-019. 실패(401)는 서버 문구 "아이디 또는 비밀번호가 올바르지 않아요."가 ApiError에 담긴다 (D-090).
-export async function login(username: string, password: string): Promise<AuthUser> {
-  const res = await request('/api/auth/login', jsonInit('POST', { username, password }))
+// A-019. 실패(401)는 서버 문구가 ApiError에 담긴다 (D-090). 실패 5회 이상 계정이면 error.securityQuestion도 온다 (D-116).
+// securityAnswer는 서버가 질문을 내려준 뒤에만 보낸다.
+export async function login(username: string, password: string, securityAnswer?: string): Promise<AuthUser> {
+  const body = securityAnswer === undefined ? { username, password } : { username, password, security_answer: securityAnswer }
+  const res = await request('/api/auth/login', jsonInit('POST', body))
   return readUser(res)
 }
 

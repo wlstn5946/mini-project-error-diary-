@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -28,6 +28,12 @@ class User(Base):
     username_key: Mapped[str] = mapped_column(String, unique=True)
     # argon2 해시. 비밀번호 원문은 저장하지 않는다.
     password_hash: Mapped[str] = mapped_column(String)
+    # 가입 때 사용자가 직접 쓴 보안 질문과 답의 argon2 해시. 답은 정규화한 뒤 해시한다. (D-116)
+    # 기존 DB는 지우고 새로 만들므로(D-083) NOT NULL이다.
+    security_question: Mapped[str] = mapped_column(String)
+    security_answer_hash: Mapped[str] = mapped_column(String)
+    # 비밀번호·답 실패 횟수. 서버 DB에만 두고 로그인 성공 때 0으로 되돌린다. (D-116)
+    failed_login_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[str] = mapped_column(String, default=now_kst)
 
 

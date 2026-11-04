@@ -11,7 +11,7 @@ export type AuthValue = {
   // status가 error일 때 보여줄 안내 문구
   errorMessage: string
   retry: () => void
-  login: (username: string, password: string) => Promise<void>
+  login: (username: string, password: string, securityAnswer?: string) => Promise<void>
   // 서버 로그아웃이 실패해도 사용자 상태는 비운다 (D-094)
   logout: () => Promise<void>
   // 401을 받았을 때처럼 서버 호출 없이 상태만 비운다

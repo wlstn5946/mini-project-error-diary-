@@ -6,10 +6,13 @@
 export class ApiError extends Error {
   // 서버가 준 상태 코드. 네트워크 오류면 null
   status: number | null
+  // 로그인 실패 응답이 보안 질문을 함께 줬을 때만 있다 (실패 5회 이상 계정, D-116)
+  securityQuestion: string | null
 
-  constructor(message: string, status: number | null) {
+  constructor(message: string, status: number | null, securityQuestion: string | null = null) {
     super(message)
     this.status = status
+    this.securityQuestion = securityQuestion
   }
 }
 
@@ -52,8 +55,10 @@ export async function request(
   if (res.ok) return res
   if (res.status === 401 && !url.startsWith(AUTH_URL_PREFIX)) unauthorizedHandler?.()
   if (known?.[res.status]) throw new ApiError(known[res.status], res.status)
-  const detail = await res.json().then((data) => data?.detail, () => null)
-  throw new ApiError(typeof detail === 'string' ? detail : fallback, res.status)
+  const data = await res.json().then((body) => body, () => null)
+  const detail = data?.detail
+  const question = typeof data?.security_question === 'string' ? data.security_question : null
+  throw new ApiError(typeof detail === 'string' ? detail : fallback, res.status, question)
 }
 
 // JSON 본문을 보내는 요청의 init
