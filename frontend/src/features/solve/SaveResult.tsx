@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { keyLine } from '../../errorText'
 import type { SavedError } from '../records/errorsApi'
 import FeedbackBox from './FeedbackBox'
 import SummaryEditForm from './SummaryEditForm'
@@ -29,8 +30,8 @@ const BANNERS = {
 function SaveResult({ saved, feedback, feedbackStatus, onRequestFeedback, onSummaryChanged, onNewError, onViewDiary }: Props) {
   const [editing, setEditing] = useState(false)
 
-  // 에러는 첫 줄만 보여준다. Traceback 전체는 위의 코드 영역에 있다.
-  const firstLine = saved.error_message.split('\n').find((line) => line.trim()) ?? saved.error_message
+  // 에러는 핵심 줄만 보여준다(D-117). Traceback 전체는 위의 코드 영역에 있다.
+  const errorTitle = keyLine(saved.error_message).text || saved.error_message
   const labels = [...saved.tags.map((t) => t.name), ...(saved.series ? [saved.series.name] : [])]
   const last = saved.attempts[saved.attempts.length - 1]?.result ?? 'failed'
   const banner = BANNERS[last]
@@ -54,7 +55,7 @@ function SaveResult({ saved, feedback, feedbackStatus, onRequestFeedback, onSumm
 
       <dl className="resolved-table">
         <dt>에러</dt>
-        <dd>{firstLine}</dd>
+        <dd>{errorTitle}</dd>
         <dt>시도</dt>
         <dd>{saved.attempts.length}회</dd>
         <dt>태그 · 시리즈</dt>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import StaleDot from '../../components/StaleDot'
+import { keyLine } from '../../errorText'
 import { STATUS_LABELS, type ErrorListItem } from './errorsApi'
 
 // 내 기록 날짜별 목록 (S-002, 시안 내기록창 ①). 항목을 누르면 상세(/records/:id, D-037)로 간다.
@@ -14,11 +15,6 @@ type Props = {
 }
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
-
-// 제목은 에러 메시지의 첫 줄 (해결 완료 영역과 같은 규칙)
-function firstLine(message: string) {
-  return message.split('\n').find((line) => line.trim()) ?? message
-}
 
 // "2026-10-30" → "10월 30일 (목)". created_at은 한국 시간(D-015)이라 날짜 부분을 그대로 쓴다.
 // 요일은 브라우저 시간대와 상관없게 UTC로 계산한다.
@@ -51,8 +47,8 @@ export function RecordItemContent({ item, showDate = false, showSeries = true, r
         <span className={`status-badge ${item.status}`}>{STATUS_LABELS[item.status]}</span>
         {/* 오래된 기록(미해결 + 등록 14일 이상)은 깜빡이는 빨간 불로 알린다 (D-078) */}
         {item.is_stale && <StaleDot label="등록한 지 14일 이상 지난 미해결 기록" />}
-        <span className="record-title" title={firstLine(item.error_message)}>
-          {firstLine(item.error_message)}
+        <span className="record-title" title={keyLine(item.error_message).text || item.error_message}>
+          {keyLine(item.error_message).text || item.error_message}
         </span>
         {reuseBadge && item.reused_from_id !== null && <span className="reuse-badge">재사용</span>}
       </span>

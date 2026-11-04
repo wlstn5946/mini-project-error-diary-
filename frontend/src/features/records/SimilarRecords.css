@@ -52,6 +52,13 @@
   font-weight: 600;
 }
 
+/* 핵심 줄 비교로 찾은 기록 표시 (D-118). 보조 정보라 유사도 배지보다 옅은 회색이다 */
+.similar-badge.key-line {
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-sub);
+}
+
 .similar-title {
   margin: 0;
   overflow: hidden;

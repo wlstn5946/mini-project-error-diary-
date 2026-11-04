@@ -1,3 +1,4 @@
+import { keyLine } from '../../errorText'
 import type { SimilarError } from './errorsApi'
 
 // 비슷한 기존 기록 (시안 에러해결창_예시.png ①). 시안의 "재사용 N회" 배지와 "에러 일기 보기" 버튼은 이번 범위에서 뺐다 (SCREEN-SPEC_4).
@@ -28,12 +29,13 @@ function SimilarRecords({ matches, applyingId, busy, error, onApply }: Props) {
         </h2>
         <div className="similar-list" tabIndex={0} aria-label="비슷한 기존 기록 목록">
           {matches.map((m) => {
-            // 에러는 첫 줄만 제목으로 쓴다. Traceback 전체는 입력칸에 있다.
-            const title = m.error_message.split('\n').find((line) => line.trim()) ?? m.error_message
+            // 에러는 핵심 줄만 제목으로 쓴다(D-117). Traceback 전체는 입력칸에 있다.
+            const title = keyLine(m.error_message).text || m.error_message
             return (
               <article key={m.id} className="similar-card">
                 <div className="similar-badges">
                   <span className="similar-badge percent">유사도 {m.similarity}%</span>
+                  {m.matched_by === 'key_line' && <span className="similar-badge key-line">핵심 줄 일치</span>}
                   <span className="similar-badge resolved">해결</span>
                 </div>
                 <h3 className="similar-title" title={title}>
