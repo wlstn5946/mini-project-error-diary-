@@ -328,3 +328,13 @@
 .retry-labels .field-label {
   margin: 0 4px 0 0;
 }
+
+/* A-005 참고한 내 기록 (D-123) */
+.ai-references {
+  margin-top: 12px;
+}
+.ai-reference-list {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  font-size: 14px;
+}

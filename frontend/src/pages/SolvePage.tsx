@@ -129,8 +129,10 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
     const previous: PreviousAttempt[] = [...existingAttempts, ...history].flatMap((a) =>
       a.result === 'solved' ? [] : [{ action: a.action, result: a.result }],
     )
+    // 내 기록에서 참고할 태그: 일반 모드는 고른 기존 태그, 이어서 해결하기는 그 기록의 태그 (D-123)
+    const tagIds = detail ? detail.tags.map((t) => t.id) : tagsValue.existingIds
     // requestSuggestion은 실패해도 예외 없이 unavailable을 돌려준다
-    const suggestion = await requestSuggestion(errorText, previous)
+    const suggestion = await requestSuggestion(errorText, previous, tagIds)
     if (seq !== suggestSeq.current) return
     setResult(suggestion)
     setLoading(false)

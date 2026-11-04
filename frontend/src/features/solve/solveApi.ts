@@ -19,23 +19,30 @@ export type Suggestion = {
   cause: string | null
   solutions: string[]
   message: string | null
+  // 프롬프트에 붙여 참고한 내 기록 (D-123)
+  references: SuggestionReference[]
 }
+
+export type SuggestionReference = { id: number; title: string; summary: string }
 
 export type PreviousAttempt = { action: string; result: 'failed' | 'partial' }
 
 export const UNAVAILABLE = '지금은 AI 분석을 가져오지 못했어요. 잠시 뒤 다시 시도해 주세요.'
 
 // A-005. 서버 꺼짐·네트워크 오류여도 예외를 던지지 않고 unavailable로 돌려준다. 화면이 멈추지 않게 하기 위해서다.
-export async function requestSuggestion(errorMessage: string, previousAttempts: PreviousAttempt[]): Promise<Suggestion> {
+export async function requestSuggestion(errorMessage: string, previousAttempts: PreviousAttempt[],
+  tagIds: number[] = [],
+): Promise<Suggestion> {
   try {
     const res = await request(
       '/api/ai-suggestions',
-      jsonInit('POST', { error_message: errorMessage, previous_attempts: previousAttempts }),
+      jsonInit('POST', { error_message: errorMessage, previous_attempts: previousAttempts, tag_ids: tagIds }),
       UNAVAILABLE,
     )
-    return (await res.json()) as Suggestion
+    const data = (await res.json()) as Suggestion
+    return { ...data, references: data.references ?? [] }
   } catch {
-    return { status: 'unavailable', confidence: null, cause: null, solutions: [], message: UNAVAILABLE }
+    return { status: 'unavailable', confidence: null, cause: null, solutions: [], message: UNAVAILABLE, references: [] }
   }
 }
 
