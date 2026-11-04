@@ -33,6 +33,22 @@ function AiSuggestionCard({ result, retrying, onRetry }: Props) {
           <li key={i}>{s}</li>
         ))}
       </ol>
+      {result.references.length > 0 && (
+        <div className="ai-references">
+          <p className="ai-label">📂 내 기록에서 참고했어요</p>
+          <ul className="ai-reference-list">
+            {result.references.map((r) => (
+              // 새 탭: 같은 탭으로 이동하면 아직 저장하지 않은 입력·시도가 사라진다 (D-065)
+              <li key={r.id}>
+                <a href={`/records/${r.id}`} target="_blank" rel="noopener">
+                  #{r.id} {r.title}
+                </a>{' '}
+                — {r.summary}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
