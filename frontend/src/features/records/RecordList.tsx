@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import StaleDot from '../../components/StaleDot'
 import { keyLine } from '../../errorText'
@@ -12,6 +12,8 @@ type Props = {
   backTo: string
   // true면 날짜 제목 없이 한 줄로 보여준다 (태그별 보기)
   flat?: boolean
+  // 날짜별 보기에서 검색어. 찾은 부분 미리보기의 강조에 쓴다 (D-126)
+  query?: string
 }
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
@@ -37,10 +39,33 @@ type ContentProps = {
   showSeries?: boolean
   // 시리즈별 보기는 묶지 않으므로 재사용 기록에 표시용 "재사용" 배지만 붙인다 (D-081)
   reuseBadge?: boolean
+  // 검색어. 미리보기 안의 검색어를 강조한다 (D-126)
+  query?: string
+}
+
+const MATCH_LABELS = { summary: '정리', attempt: '시도', situation: '상황' } as const
+const MATCH_ICONS = { summary: '💡', attempt: '📝', situation: '📍' } as const
+
+// 미리보기를 검색어 앞뒤로 나눠 일치한 부분만 <mark>로 감싼다. HTML 문자열을 만들지 않고 React 요소로 만든다 (D-126)
+function Highlighted({ text, query }: { text: string; query?: string }) {
+  const q = query?.trim()
+  if (!q) return <>{text}</>
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const parts = text.split(new RegExp(`(${escaped})`, 'i'))
+  return (
+    <>
+      {parts.map((part, i) => (
+        <Fragment key={i}>{i % 2 === 1 ? <mark>{part}</mark> : part}</Fragment>
+      ))}
+    </>
+  )
 }
 
 // 항목의 내용: 윗줄에 상태 배지와 제목(첫 줄), 아랫줄에 시리즈·날짜·시도 횟수·태그. 모든 목록이 같이 쓴다.
-export function RecordItemContent({ item, showDate = false, showSeries = true, reuseBadge = false }: ContentProps) {
+export function RecordItemContent({ item, showDate = false, showSeries = true, reuseBadge = false, query }: ContentProps) {
+  // 에러 메시지 밖에서 찾은 칸만 배지로 보여준다. 미리보기 아이콘은 정리 → 시도 → 상황 순서로 처음 걸린 칸 (D-126)
+  const matchedOut = item.matched_in.filter((m): m is keyof typeof MATCH_LABELS => m !== 'error_message')
+  const snippetFrom = (['summary', 'attempt', 'situation'] as const).find((m) => matchedOut.includes(m))
   return (
     <span className="record-main">
       <span className="record-head">
@@ -50,6 +75,11 @@ export function RecordItemContent({ item, showDate = false, showSeries = true, r
         <span className="record-title" title={keyLine(item.error_message).text || item.error_message}>
           {keyLine(item.error_message).text || item.error_message}
         </span>
+        {matchedOut.map((m) => (
+          <span key={m} className="match-badge">
+            {MATCH_LABELS[m]}
+          </span>
+        ))}
         {reuseBadge && item.reused_from_id !== null && <span className="reuse-badge">재사용</span>}
       </span>
       <span className="record-meta">
@@ -62,6 +92,11 @@ export function RecordItemContent({ item, showDate = false, showSeries = true, r
           </span>
         ))}
       </span>
+      {snippetFrom && item.match_snippet && (
+        <span className="match-snippet">
+          {MATCH_ICONS[snippetFrom]} <Highlighted text={item.match_snippet} query={query} />
+        </span>
+      )}
     </span>
   )
 }
@@ -112,9 +147,10 @@ type RowProps = {
   backTo: string
   // 날짜 제목이 없는 목록(태그별)에서는 항목에 날짜를 보여준다
   showDate: boolean
+  query?: string
 }
 
-function RecordRow({ row, backTo, showDate }: RowProps) {
+function RecordRow({ row, backTo, showDate, query }: RowProps) {
   // 접힘이 기본이다 (D-081)
   const [open, setOpen] = useState(false)
   const { item, children } = row
@@ -122,7 +158,7 @@ function RecordRow({ row, backTo, showDate }: RowProps) {
     <li>
       <div className="record-row">
         <Link className="record-item" to={`/records/${item.id}`} state={{ backTo }}>
-          <RecordItemContent item={item} showDate={showDate} />
+          <RecordItemContent item={item} showDate={showDate} query={query} />
         </Link>
         {item.reused_from_id !== null && (
           <Link className="reuse-origin-link" to={`/records/${item.reused_from_id}`} state={{ backTo }}>
@@ -151,7 +187,7 @@ function RecordRow({ row, backTo, showDate }: RowProps) {
           {children.map((child) => (
             <li key={child.id} className="record-row">
               <Link className="record-item" to={`/records/${child.id}`} state={{ backTo }}>
-                <RecordItemContent item={child} showDate />
+                <RecordItemContent item={child} showDate query={query} />
               </Link>
               <RetryButton item={child} />
             </li>
@@ -162,7 +198,7 @@ function RecordRow({ row, backTo, showDate }: RowProps) {
   )
 }
 
-function RecordList({ items, backTo, flat = false }: Props) {
+function RecordList({ items, backTo, flat = false, query }: Props) {
   const rows = buildRows(items)
 
   // 날짜 제목 없이 한 줄로 늘어놓는 목록 (태그별 보기)
@@ -170,7 +206,7 @@ function RecordList({ items, backTo, flat = false }: Props) {
     return (
       <ul className="record-items">
         {rows.map((row) => (
-          <RecordRow key={row.item.id} row={row} backTo={backTo} showDate />
+          <RecordRow key={row.item.id} row={row} backTo={backTo} showDate query={query} />
         ))}
       </ul>
     )
@@ -194,7 +230,7 @@ function RecordList({ items, backTo, flat = false }: Props) {
           </h2>
           <ul className="record-items">
             {group.rows.map((row) => (
-              <RecordRow key={row.item.id} row={row} backTo={backTo} showDate={false} />
+              <RecordRow key={row.item.id} row={row} backTo={backTo} showDate={false} query={query} />
             ))}
           </ul>
         </section>

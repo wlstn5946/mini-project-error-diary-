@@ -1076,3 +1076,29 @@ button.reuse-badge:hover {
 .record-row > .record-continue {
   margin: 10px 20px 0 0;
 }
+
+/* 검색어를 찾은 칸 배지(정리·시도·상황)와 찾은 부분 미리보기 (D-126) */
+.match-badge {
+  flex-shrink: 0;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  background: var(--info-bg);
+  color: var(--info-fg);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.match-snippet {
+  display: block;
+  overflow: hidden;
+  color: var(--ink-sub);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-snippet mark {
+  padding: 0;
+  background: var(--warn-bg);
+  color: inherit;
+}
