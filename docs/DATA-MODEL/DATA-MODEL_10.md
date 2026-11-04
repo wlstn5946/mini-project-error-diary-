@@ -36,7 +36,12 @@
 | `username` | TEXT | NOT NULL | 보이는 아이디. 입력한 표기 그대로 (앞뒤 공백은 뺌) |
 | `username_key` | TEXT | NOT NULL, UNIQUE | 중복 판단용 값. 공백을 빼고 소문자로 바꾼 `username` (D-019 방식, D-085) |
 | `password_hash` | TEXT | NOT NULL | argon2 해시. 비밀번호 원문은 저장하지 않는다 (D-084) |
+| `security_question` | TEXT | NOT NULL | 가입 때 사용자가 쓴 보안 질문 (D-116) |
+| `security_answer_hash` | TEXT | NOT NULL | 보안 답을 정규화(NFC → 모든 공백 제거 → 소문자)한 뒤 argon2로 해시한 값. 원문은 저장하지 않는다 (D-116) |
+| `failed_login_count` | INTEGER | NOT NULL, 기본 0 (`server_default`) | 비밀번호·답 실패 횟수. 틀릴 때마다 DB에서 1 올리고 로그인 성공 때 0으로 되돌린다. 5 이상이면 로그인에 보안 답이 필요하다 (D-116) |
 | `created_at` | TEXT | NOT NULL, 저장 시점 자동 | 가입 시각. 한국 시간 ISO 8601 (D-015) |
+
+- 보안 질문 컬럼은 NOT NULL이라 기존 DB에는 `init_db()`가 추가하지 못한다. 로컬 DB를 지우고 새로 만든다(D-083 방식, D-116). 마이그레이션 파일은 만들지 않는다.
 
 - 같은 아이디 판단: `username_key`가 같으면 같은 아이디다(`Alice`와 ` alice `). DB의 UNIQUE로 막는다. (D-085)
 - 비밀번호는 4~30자다. 길이 검사는 서버가 한다. 복잡도 규칙은 Later (D-099, D-088. 이전의 "8자 이상"은 D-099로 바뀜)
@@ -245,3 +250,4 @@
 | v9 | 2026-11-04 | 로그인 5-1단계 구현 반영: `errors`·`series`·`tags`에 `user_id`(NOT NULL, FK) 구현됨, `series`의 UNIQUE는 `(user_id, name)`, `tags`는 `(user_id, name_key)`(`create_all`로 만들어지는 것 확인), `errors.user_id` 인덱스 추가(D-105). 시리즈 이름 중복 판단은 `lower(trim(name))` 비교를 유지하고 `series.name_key`는 만들지 않음. 빈 DB에서 `init_db()`의 컬럼 추가·`reused_from_id` 채우기 코드는 "방금 추가한 컬럼"일 때만 돌아 그냥 지나간다. 옛 모양의 테이블이 남은 DB는 NOT NULL인 `user_id`를 추가할 수 없어 멈추므로 DB를 지우고 다시 만든다(D-083) |
 | v10 | 2026-11-04 | `tag_aliases` 테이블 추가(`user_id`·`tag_id`·`alias`·`alias_key`, `(user_id, alias_key)` UNIQUE, `create_all`로 생성, 미구현, D-112 ~ D-114). 태그 `name_key`와 `alias_key`는 같은 사용자 안에서 겹칠 수 없음(코드로 확인). 태그 삭제 때 별칭도 지움, 태그 합치기 처리 순서·이름 변경 규칙에 별칭 반영. 기존 테이블은 바뀌지 않음 |
 | v10 | 2026-11-04 | 태그 이름·별칭 20자 제한(D-115, 구현됨): 서버 검사만 하고 컬럼 길이·기존 데이터는 바꾸지 않음 |
+| v10 | 2026-11-04 | `users`에 `security_question`·`security_answer_hash`·`failed_login_count` 추가(D-116, 구현됨). 기존 DB는 지우고 새로 만든다 |

@@ -32,8 +32,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAttempt((n) => n + 1)
   }, [])
 
-  const login = useCallback(async (username: string, password: string) => {
-    const current = await loginApi(username, password)
+  const login = useCallback(async (username: string, password: string, securityAnswer?: string) => {
+    const current = await loginApi(username, password, securityAnswer)
     setUser(current)
     setStatus('ready')
   }, [])

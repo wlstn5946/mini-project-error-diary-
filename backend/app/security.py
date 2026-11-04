@@ -5,6 +5,7 @@
 
 import hashlib
 import secrets
+import unicodedata
 from datetime import datetime, timedelta
 
 from fastapi import Cookie, Depends, HTTPException
@@ -37,6 +38,22 @@ def verify_password(password: str, password_hash: str) -> bool:
 def verify_dummy(password: str) -> None:
     """아이디가 없을 때 비밀번호 확인과 비슷한 시간을 쓰려고 더미 해시로 verify를 한 번 한다. 결과는 쓰지 않는다. (D-093)"""
     _password_hash.verify(password, _DUMMY_HASH)
+
+
+def normalize_answer(answer: str) -> str:
+    """보안 답 정규화. 가입(저장)과 로그인(비교)이 반드시 이 함수 하나만 쓴다. (D-116)
+
+    1) 유니코드 NFC  2) 모든 공백 제거  3) 소문자
+    """
+    return "".join(unicodedata.normalize("NFC", answer).split()).lower()
+
+
+def hash_answer(answer: str) -> str:
+    return _password_hash.hash(normalize_answer(answer))
+
+
+def verify_answer(answer: str, answer_hash: str) -> bool:
+    return _password_hash.verify(normalize_answer(answer), answer_hash)
 
 
 def new_token() -> str:

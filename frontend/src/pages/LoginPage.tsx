@@ -14,6 +14,9 @@ function LoginPage() {
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  // 서버가 내려준 보안 질문. 실패 5회 이상 계정에만 오고, 화면은 5회를 세지 않는다 (D-116)
+  const [question, setQuestion] = useState<string | null>(null)
+  const [answer, setAnswer] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -23,11 +26,14 @@ function LoginPage() {
     setSubmitting(true)
     setError('')
     try {
-      await login(username, password)
+      // 답은 서버가 질문을 내려준 뒤에만 보낸다
+      await login(username, password, question === null ? undefined : answer)
     } catch (e) {
-      // 서버 문구를 그대로 보여주고 아이디는 유지, 비밀번호 칸은 비운다
+      // 서버 문구를 그대로 보여주고 아이디는 유지, 비밀번호·답 칸은 비운다
       setError(e instanceof ApiError ? e.message : '로그인하지 못했어요. 잠시 뒤 다시 시도해 주세요.')
+      if (e instanceof ApiError && e.securityQuestion !== null) setQuestion(e.securityQuestion)
       setPassword('')
+      setAnswer('')
       setSubmitting(false)
     }
   }
@@ -72,6 +78,22 @@ function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
+          {question !== null && (
+            <div className="auth-field">
+              <label className="field-label" htmlFor="login-answer">
+                보안 질문: {question}
+              </label>
+              <input
+                id="login-answer"
+                className="auth-input"
+                type="text"
+                name="security-answer"
+                autoComplete="off"
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+              />
+            </div>
+          )}
           {error && (
             <p className="auth-error" role="alert">
               {error}
