@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import StaleDot from '../../components/StaleDot'
 import { keyLine } from '../../errorText'
 import { STATUS_LABELS, type ErrorListItem } from './errorsApi'
@@ -66,6 +66,23 @@ export function RecordItemContent({ item, showDate = false, showSeries = true, r
   )
 }
 
+// 미해결 기록 줄 오른쪽의 "이어서 해결" 버튼 (D-124). 상세의 "이어서 해결하기"(D-075)와 같은 /solve?retry={id}로 간다.
+// 줄 전체가 링크(<a>)라서 버튼은 링크 안이 아니라 옆(형제)에 둔다. 해결된 기록에는 보이지 않는다.
+export function RetryButton({ item }: { item: ErrorListItem }) {
+  const navigate = useNavigate()
+  if (item.status !== 'unresolved') return null
+  return (
+    <button
+      type="button"
+      className="btn-secondary record-continue"
+      aria-label={`#${item.id} 이어서 해결하기`}
+      onClick={() => navigate(`/solve?retry=${item.id}`)}
+    >
+      이어서 해결
+    </button>
+  )
+}
+
 // 받은 목록 안에서 재사용 기록을 원본 아래로 묶는다 (D-081). 묶기는 이 목록 안에서만 한다.
 // 원본이 목록에 없는 재사용 기록(예: 태그 필터에 자식만 걸림)은 묶지 않고 단독 줄로 두고 "원본 #N" 링크를 단다.
 type Row = { item: ErrorListItem; children: ErrorListItem[] }
@@ -127,14 +144,16 @@ function RecordRow({ row, backTo, showDate }: RowProps) {
             // 재사용 기록이 이 결과에 없으면 펼칠 것이 없어 표시만 한다
             <span className="reuse-badge">재사용 {item.reuse_count}</span>
           ))}
+        <RetryButton item={item} />
       </div>
       {open && (
         <ul className="record-children">
           {children.map((child) => (
-            <li key={child.id}>
+            <li key={child.id} className="record-row">
               <Link className="record-item" to={`/records/${child.id}`} state={{ backTo }}>
                 <RecordItemContent item={child} showDate />
               </Link>
+              <RetryButton item={child} />
             </li>
           ))}
         </ul>

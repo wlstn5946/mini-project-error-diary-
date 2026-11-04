@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { ApiError } from '../../api'
 import type { ErrorListItem } from './errorsApi'
-import { RecordItemContent } from './RecordList'
+import { RecordItemContent, RetryButton } from './RecordList'
 import { exportSeriesMarkdown } from './exportActions'
 import ConfirmDialog from './ConfirmDialog'
 import SeriesCreateForm from './SeriesCreateForm'
@@ -183,6 +183,7 @@ function SeriesDetail({ series, backTo, onSeriesChanged, onGone, onDeleted, onNe
               <Link className="record-item series-link" to={`/records/${item.id}`} state={{ backTo }}>
                 <RecordItemContent item={item} showDate showSeries={false} reuseBadge />
               </Link>
+              <RetryButton item={item} />
               <span className="series-arrows">
                 <button
                   type="button"
