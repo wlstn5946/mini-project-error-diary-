@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
+import ErrorMessageView from '../../components/ErrorMessageView'
 import { RESULT_LABELS } from '../solve/solveApi'
 import { STATUS_LABELS, type ErrorDetail as Detail } from './errorsApi'
 
@@ -67,7 +68,7 @@ function ErrorDetail({ detail, actions, feedbackSection }: Props) {
 
       {actions && <div className="detail-actions">{actions}</div>}
 
-      <pre className="code-view">{detail.error_message}</pre>
+      <ErrorMessageView text={detail.error_message} />
 
       {detail.situation && (
         <section className="detail-section">

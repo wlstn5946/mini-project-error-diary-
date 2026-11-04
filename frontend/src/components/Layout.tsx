@@ -7,7 +7,9 @@ function Layout() {
     <div className="layout">
       <Sidebar />
       <main className="content">
-        <Outlet />
+        <div className="content-inner">
+          <Outlet />
+        </div>
       </main>
     </div>
   )

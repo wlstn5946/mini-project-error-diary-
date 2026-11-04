@@ -1,22 +1,88 @@
-/* 색·간격은 문서에 수치가 없어 시안(에러해결창_예시.png, 내기록창_예시.png)에 가깝게 맞춘 값이다. */
+/* 디자인 토큰 (D-109). 모든 CSS 파일의 색·글자 크기는 여기 값만 쓴다.
+   주 색(인디고)은 행동·현재 위치에만, 빨강·초록·주황은 상태에만 쓴다.
+   다크 모드를 넣을 때는 무채색·상태·터미널 값만 바꿔 다시 정의하면 된다. */
 :root {
-  --text: #1f2328;
-  --text-sub: #4b5563;
-  --bg: #fff;
-  --sidebar-bg: #f6f7f9;
-  --border: #e5e7eb;
-  --accent: #f04848;
-  --accent-text: #fff;
+  /* 무채색 */
+  --page: #f7f8fa;
+  --surface: #ffffff;
+  --surface-sub: #f2f4f7;
+  --line: #e6e8ec;
+  --line-strong: #d5d9e0;
+  --ink: #16181d;
+  --ink-sub: #5b6270;
+  --ink-faint: #8a919e;
 
-  font-family: system-ui, 'Segoe UI', 'Malgun Gothic', sans-serif;
-  font-size: 16px;
+  /* 주 색 (잉크 인디고) */
+  --accent: #3a45c4;
+  --accent-hover: #2f39a8;
+  --accent-soft: #eef0fd;
+  --accent-text: #ffffff;
+  --focus: 0 0 0 3px rgba(58, 69, 196, 0.28);
+
+  /* 상태 */
+  --ok-fg: #1e7a4f;
+  --ok-bg: #eaf6ef;
+  --warn-fg: #a15c07;
+  --warn-bg: #fdf3e3;
+  --danger-fg: #c0362c;
+  --danger-bg: #fcedeb;
+  --info-fg: #3a45c4;
+  --info-bg: #eef0fd;
+  --error-text: #c0362c;
+
+  /* 터미널 */
+  --term-bg: #0f1320;
+  --term-bar: #1a1f2e;
+  --term-text: #c9d1e0;
+  --term-dim: #6b7489;
+  --term-error: #ff7a70;
+
+  /* 글자 */
+  --font-sans: 'Pretendard Variable', Pretendard, system-ui, 'Malgun Gothic', sans-serif;
+  --mono: 'JetBrains Mono', 'D2Coding', Consolas, monospace;
+  --fs-xs: 12px;
+  --fs-sm: 14px;
+  --fs-md: 16px;
+  --fs-lg: 20px;
+  --fs-xl: 28px;
+
+  /* 모양·모션 */
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-full: 999px;
+  --shadow-float: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.1);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* 기존 이름 (새 토큰을 가리킨다) */
+  --text: var(--ink);
+  --text-sub: var(--ink-sub);
+  --bg: var(--surface);
+  --sidebar-bg: var(--page);
+  --border: var(--line);
+
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
   color: var(--text);
-  background: var(--bg);
+  background: var(--page);
   color-scheme: light;
 }
 
 body {
   margin: 0;
+  background: var(--page);
+  line-height: 1.65;
+  word-break: keep-all;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  line-height: 1.3;
+  letter-spacing: -0.02em;
 }
 
 .layout {
@@ -24,73 +90,84 @@ body {
   min-height: 100svh;
 }
 
+/* 사이드바: 화면 높이를 채우고 스크롤해도 제자리에 있다. 계정 영역은 맨 아래에 붙는다 */
 .sidebar {
-  width: 180px;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  width: 220px;
+  height: 100svh;
   flex-shrink: 0;
-  padding: 24px 12px;
+  padding: 28px 16px;
   box-sizing: border-box;
-  background: var(--sidebar-bg);
-  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  background: var(--page);
+  border-right: 1px solid var(--line);
 }
 
 .app-name {
-  padding: 0 4px;
-  margin-bottom: 20px;
-  font-size: 18px;
-  font-weight: 700;
+  padding: 0 10px;
+  margin-bottom: 28px;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .menu {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .menu-item {
   display: block;
-  padding: 10px 12px;
-  border-radius: 6px;
-  color: var(--text-sub);
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
+  font-weight: 500;
   text-decoration: none;
+  transition:
+    background-color 0.12s var(--ease),
+    color 0.12s var(--ease);
 }
 
 .menu-item:hover {
-  background: var(--border);
+  background: var(--surface-sub);
+  color: var(--ink);
 }
 
+/* 현재 메뉴: 주 색은 "현재 위치"에만 쓴다 (D-109) */
 .menu-item.active {
-  background: var(--accent);
-  color: var(--accent-text);
-  font-weight: 700;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
 }
 
-/* 사이드바 대시보드: 4칸을 한 줄씩, 굵은 글씨와 테두리로 구분한다 (D-074, 시안 내기록창_예시.png).
-   누를 수 있는 칸은 3D 버튼처럼 아래 그림자가 있고, 누르는 동안 그림자만큼 내려앉는다. */
+/* 사이드바 대시보드 (D-074, D-110): 칸마다 왼쪽에 상태 색 점 + 이름, 오른쪽에 숫자.
+   누를 수 있는 칸은 hover 때 옅은 바탕만 바뀌고 움직이지 않는다. */
 .sidebar-stats {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid var(--border);
+  gap: 2px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
 }
 
 .stat {
-  --stat-color: #374151;
-  --stat-tint: #f3f4f6;
+  --stat-color: var(--ink-faint);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
   box-sizing: border-box;
-  padding: 9px 11px;
-  border: 2px solid var(--stat-color);
-  border-radius: 8px;
-  background: var(--bg);
-  box-shadow: 0 3px 0 var(--stat-color);
-  color: var(--text);
-  font-size: 14px;
-  font-weight: 800;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
+  font-weight: 400;
   line-height: 1.3;
   text-decoration: none;
 }
@@ -98,15 +175,34 @@ body {
 .stat-label {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   white-space: nowrap;
+}
+
+/* 상태 색 점. 미해결 칸에 빨간 불(StaleDot)이 켜지면 점 대신 불만 보인다 */
+.stat-label::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--stat-color);
+}
+
+.stat-label:has(.stale-dot)::before {
+  display: none;
+}
+
+.stat .stale-dot {
+  width: 6px;
+  height: 6px;
 }
 
 /* 깜빡이는 작은 빨간 불 (D-078): 등록 14일 이상 지난 미해결 기록이 있다는 표시.
    불 자체가 깜빡이고(opacity), 바깥으로 번지는 파문(::after)과 붉은 빛(box-shadow)이 함께 보인다.
    "오래된 기록" 버튼, 사이드바 미해결 칸, 목록 항목이 같이 쓴다. */
 .stale-dot {
-  --dot: #ef4444;
+  --dot: var(--danger-fg);
   position: relative;
   display: inline-block;
   flex-shrink: 0;
@@ -162,73 +258,59 @@ body {
   }
 }
 
-/* 켜진(빨간 바탕) 칩 안에서는 불이 흰색으로 보인다 */
-.filter-chip[aria-pressed='true'] .stale-dot {
-  --dot: #fff;
-  box-shadow: 0 0 6px 1px rgba(255, 255, 255, 0.9);
-}
-
 .stat-value {
-  color: var(--stat-color);
-  font-size: 15px;
-  font-weight: 800;
+  color: var(--ink);
+  font-size: var(--fs-md);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .stat-all {
-  --stat-color: #374151;
-  --stat-tint: #f3f4f6;
+  --stat-color: var(--ink-faint);
 }
 
 .stat-resolved {
-  --stat-color: #15803d;
-  --stat-tint: #dcfce7;
+  --stat-color: var(--ok-fg);
 }
 
 .stat-unresolved {
-  --stat-color: #dc2626;
-  --stat-tint: #fee2e2;
+  --stat-color: var(--danger-fg);
 }
 
 .stat-reuse {
-  --stat-color: #2b3fb8;
-  --stat-tint: #e8edff;
+  --stat-color: var(--accent);
 }
 
 /* 누를 수 있는 칸 */
 a.stat {
   cursor: pointer;
-  transition: transform 0.08s ease, box-shadow 0.08s ease, background-color 0.12s ease;
+  transition:
+    background-color 0.12s var(--ease),
+    color 0.12s var(--ease);
 }
 
 a.stat:hover {
-  background: var(--stat-tint);
-}
-
-a.stat:active {
-  transform: translateY(3px);
-  box-shadow: 0 0 0 var(--stat-color);
-}
-
-a.stat:focus-visible {
-  outline: 3px solid #93a4f4;
-  outline-offset: 2px;
+  background: var(--surface-sub);
 }
 
 /* 지금 보고 있는 보기 */
 a.stat.active {
-  background: var(--stat-tint);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
-/* 표시만 하는 칸(재사용 해결): 눌리지 않는다 */
+a.stat.active .stat-value {
+  color: var(--accent);
+}
+
+/* 표시만 하는 칸(재사용 해결): 눌리지 않아 hover 효과가 없다 */
 .stat.static {
-  box-shadow: none;
-  border-style: dashed;
   cursor: default;
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .menu-item,
   a.stat {
     transition: none;
   }
@@ -236,171 +318,440 @@ a.stat.active {
 
 .content {
   flex: 1;
-  padding: 24px 28px;
+  min-width: 0;
+  padding: 48px 40px 80px;
+  background: var(--page);
+}
+
+/* 본문 내용은 최대 880px로 가운데 정렬한다 */
+.content-inner {
+  max-width: 880px;
+  margin: 0 auto;
 }
 
 .page-title {
-  margin: 0 0 16px;
-  /* 맑은 고딕 Bold는 22px에서 "록"처럼 획이 많은 글자의 획이 뭉쳐 보여 24px로 키웠다 */
-  font-size: 24px;
-  font-weight: 700;
+  margin: 0 0 24px;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
 }
 
-/* 에러 해결 화면: 탭 + AI 분석 카드 (시안 에러해결창_예시.png 참고) */
-.tabs {
+/* ---------- 기본 부품 (D-109) ---------- */
+
+/* 키보드 포커스: 모든 눌리는 요소에 윤곽선 대신 포커스 링을 준다 */
+:is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+/* 탭: 에러 해결(.tabs)과 내 기록(.view-tabs)이 같은 밑줄 탭을 쓴다 (D-111) */
+.tabs,
+.view-tabs {
   display: flex;
-  gap: 4px;
-  margin-bottom: 20px;
-  border-bottom: 1px solid var(--border);
+  gap: 28px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--line);
 }
 
-.tab {
-  padding: 10px 16px;
+.tab,
+.view-tab {
+  padding: 10px 0;
   margin-bottom: -1px;
   border: 0;
   border-bottom: 2px solid transparent;
   background: none;
+  color: var(--ink-faint);
   font: inherit;
-  color: var(--text-sub);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  transition: color 0.12s var(--ease);
+}
+
+/* 에러 해결 화면의 탭은 단계 표시라서 눌리지 않는다 (D-108) */
+.tab {
   cursor: default;
 }
 
-.tab[aria-selected='true'] {
+.view-tab {
+  cursor: pointer;
+}
+
+.view-tab:hover {
+  color: var(--ink-sub);
+}
+
+.tab[aria-selected='true'],
+.view-tab[aria-selected='true'] {
   border-bottom-color: var(--accent);
-  color: var(--text);
-  font-weight: 700;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* 배지: 상태 색(*-bg / *-fg)만 쓴다 */
+.status-badge,
+.attempt-badge,
+.attempt-result-badge,
+.similar-badge,
+.confidence,
+.reuse-badge,
+.tab-badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: var(--radius-full);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  line-height: 1.5;
 }
 
 .tab-badge {
-  margin-left: 6px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--border);
-  font-size: 12px;
-  font-weight: 400;
+  margin-left: 8px;
+  background: var(--surface-sub);
+  color: var(--ink-sub);
 }
 
 .tab-badge.done {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--ok-bg);
+  color: var(--ok-fg);
 }
 
-.field-label {
+/* 라벨과 안내 문구 */
+.field-label,
+.detail-label,
+.attempt-results legend {
   display: block;
-  margin-bottom: 6px;
-  font-size: 14px;
-  color: var(--text-sub);
+  margin-bottom: 8px;
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
+  font-weight: 500;
 }
 
+/* 입력칸·선택칸·검색칸 */
+.series-control,
+.situation-input,
+.attempt-input,
+.record-search,
+.auth-input,
+.manage-input,
+.edit-situation {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-md);
+  transition:
+    border-color 0.12s var(--ease),
+    box-shadow 0.12s var(--ease);
+}
+
+.series-control:focus,
+.situation-input:focus,
+.attempt-input:focus,
+.record-search:focus,
+.auth-input:focus,
+.manage-input:focus,
+.edit-situation:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--ink-faint);
+}
+
+/* 존재감 ①: 에러 메시지 터미널 블록 (D-109).
+   위쪽 32px 막대와 점 3개는 background-image로만 그려서 화면 읽기 프로그램이 읽지 않는다.
+   내용은 padding-top으로 막대 아래에서 시작한다. */
 .code-input,
 .code-view {
   box-sizing: border-box;
   width: 100%;
-  padding: 14px;
+  padding: 46px 18px 18px;
   border: 0;
-  border-radius: 8px;
-  background: #22262e;
-  color: #ff8f8f;
-  font-family: Consolas, 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 1.6;
+  border-radius: var(--radius-panel);
+  box-shadow: 0 0 0 1px rgba(15, 19, 32, 0.9);
+  background-color: var(--term-bg);
+  background-image:
+    radial-gradient(circle at 18px 16px, #ff5f57 4.5px, transparent 5px),
+    radial-gradient(circle at 36px 16px, #febc2e 4.5px, transparent 5px),
+    radial-gradient(circle at 54px 16px, #28c840 4.5px, transparent 5px),
+    linear-gradient(var(--term-bar), var(--term-bar));
+  background-size: 100% 32px;
+  background-repeat: no-repeat;
+  color: var(--term-text);
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
 }
 
 .code-input {
   display: block;
-  margin-bottom: 14px;
+  min-height: 180px;
+  margin-bottom: 24px;
+  caret-color: var(--term-error);
   resize: vertical;
 }
 
+.code-input::placeholder {
+  color: var(--term-dim);
+}
+
+.code-input:focus {
+  outline: none;
+  box-shadow:
+    0 0 0 1px var(--accent),
+    var(--focus);
+}
+
+/* 긴 줄은 줄바꿈하고, 가로 스크롤이 생겨도 블록 안에서만 생긴다 */
 .code-view {
-  margin: 0 0 16px;
+  margin: 0 0 32px;
   overflow-x: auto;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+/* 마지막 비어 있지 않은 줄(실제 에러)만 강조한다. 기본 글자는 빨강으로 칠하지 않는다 */
+.code-line-error {
+  color: var(--term-error);
+  font-weight: 500;
+}
+
+/* 버튼: 주(인디고) / 보조(흰 바탕) / 위험(보조 모양 + 빨간 글자) / 이 방법 적용(초록) */
+.btn-primary,
+.btn-secondary,
+.btn-danger,
+.btn-apply,
+.btn-ask-ai {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.12s var(--ease),
+    border-color 0.12s var(--ease),
+    color 0.12s var(--ease);
+}
+
+.btn-primary:active:not(:disabled),
+.btn-secondary:active:not(:disabled),
+.btn-danger:active:not(:disabled),
+.btn-apply:active:not(:disabled),
+.btn-ask-ai:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .btn-primary,
-.btn-secondary {
-  padding: 9px 18px;
-  border-radius: 6px;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.btn-primary {
-  border: 0;
+.btn-ask-ai {
   background: var(--accent);
   color: var(--accent-text);
 }
 
+.btn-primary:hover:not(:disabled),
+.btn-ask-ai:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
 .btn-secondary {
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--surface-sub);
+}
+
+.btn-danger {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--danger-fg);
+}
+
+.btn-danger:hover:not(:disabled) {
+  border-color: var(--danger-bg);
+  background: var(--danger-bg);
+}
+
+/* 해결된 방법을 쓰는 행동이라 이 버튼만 초록이다 */
+.btn-apply {
+  background: var(--ok-fg);
+  color: var(--accent-text);
+}
+
+.btn-apply:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ok-fg) 85%, black);
+}
+
+/* 빨강 바탕은 확인 대화상자의 최종 삭제 버튼에만 쓴다 (확인 창은 삭제에만 쓰인다) */
+.confirm-actions .btn-primary {
+  background: var(--danger-fg);
+}
+
+.confirm-actions .btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger-fg) 85%, black);
 }
 
 .btn-primary:disabled,
-.btn-secondary:disabled {
+.btn-secondary:disabled,
+.btn-danger:disabled,
+.btn-apply:disabled,
+.btn-ask-ai:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.hint,
-.empty {
-  color: var(--text-sub);
-  font-size: 14px;
+/* 글 줄 안이나 목록 줄 안에 들어가는 작은 버튼 (다시 시도, 관리 줄, ▲▼) */
+.record-retry,
+.series-retry,
+.tag-retry,
+.locked-notice .btn-secondary,
+.feedback-failed .btn-secondary,
+.manage-btn,
+.arrow-btn {
+  height: 32px;
+  padding: 0 12px;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger,
+  .btn-apply,
+  .btn-ask-ai,
+  .tab,
+  .view-tab {
+    transition: none;
+  }
+}
+
+.hint,
+.empty {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+/* AI 분석 카드: 점선 대신 1px 선 + 왼쪽 2px 인디고 */
 .ai-card {
-  padding: 16px 18px;
-  border: 1px dashed #93a4f4;
-  border-radius: 10px;
-  background: #f5f7ff;
+  padding: 22px 24px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
 }
 
 .ai-card.unavailable {
-  border-color: var(--border);
-  background: var(--sidebar-bg);
+  border-left-color: var(--line-strong);
+  background: var(--surface-sub);
 }
 
 .ai-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 12px;
-  font-size: 16px;
-  color: #2b3fb8;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--accent);
 }
 
 .confidence {
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: #dcfce7;
-  color: #166534;
-  font-size: 13px;
+  background: var(--ok-bg);
+  color: var(--ok-fg);
 }
 
 .confidence.c-보통 {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--warn-bg);
+  color: var(--warn-fg);
 }
 
 .confidence.c-낮음 {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
 }
 
 .ai-label {
-  margin: 12px 0 4px;
-  font-weight: 700;
+  margin: 16px 0 4px;
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
+  font-weight: 500;
 }
 
 .ai-text {
   margin: 0 0 8px;
-  line-height: 1.6;
+  color: var(--ink);
   white-space: pre-wrap;
 }
 
 .ai-list {
   margin: 0;
-  padding-left: 22px;
-  line-height: 1.7;
+  padding-left: 24px;
+  line-height: 1.8;
+}
+
+.ai-list li::marker {
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 768px 이하: 사이드바를 위쪽 가로 막대로 바꾼다(앱 이름 + 메뉴 2개 + 오른쪽 로그아웃, 통계는 숨김, 고정 해제) */
+@media (max-width: 768px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    width: auto;
+    height: auto;
+    padding: 12px 16px;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .app-name {
+    margin: 0;
+    padding: 0;
+  }
+
+  .menu {
+    flex-direction: row;
+  }
+
+  .sidebar-stats {
+    display: none;
+  }
+
+  .content {
+    padding: 28px 18px 60px;
+  }
+
+  /* 단계 탭의 이름이 길어도 가로 스크롤이 생기지 않게 줄바꿈한다 */
+  .tabs,
+  .view-tabs {
+    flex-wrap: wrap;
+    gap: 0 24px;
+  }
 }

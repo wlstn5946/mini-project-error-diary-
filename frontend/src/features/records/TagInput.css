@@ -1,34 +1,42 @@
 /* 태그 입력 (시안 에러해결창_예시.png ① 태그 부분 참고) */
 .tag-input {
   position: relative;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 
+/* 입력칸과 같은 모양. 안쪽 input(.tag-field)에는 테두리·링이 없고 상자 전체에 링이 생긴다 */
 .tag-box {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  transition:
+    border-color 0.12s var(--ease),
+    box-shadow 0.12s var(--ease);
 }
 
 .tag-box:focus-within {
-  border-color: #93a4f4;
+  border-color: var(--accent);
+  box-shadow: var(--focus);
 }
 
-.tag-chip {
+/* 입력한 태그 칩 (내 기록 태그별 탭의 .filter-chip.tag-chip은 칩 모양을 따로 쓴다) */
+.tag-chip:not(.filter-chip) {
   display: inline-flex;
   align-items: center;
   gap: 2px;
   padding: 2px 4px 2px 10px;
-  border-radius: 999px;
-  background: #eef2ff;
-  color: #3730a3;
-  font-size: 14px;
-  font-weight: 700;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: 500;
 }
 
 .tag-chip-remove {
@@ -49,6 +57,12 @@
   background: none;
   color: var(--text);
   font: inherit;
+  font-size: var(--fs-md);
+}
+
+/* 링은 상자(.tag-box)에만 보인다 */
+.tag-field:focus-visible {
+  box-shadow: none;
 }
 
 .tag-suggestions {
@@ -60,21 +74,28 @@
   margin: 4px 0 0;
   padding: 4px 0;
   overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  box-shadow: 0 4px 12px rgb(0 0 0 / 8%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  box-shadow: var(--shadow-float);
   list-style: none;
 }
 
 .tag-suggestion {
-  padding: 7px 12px;
+  padding: 8px 12px;
   cursor: pointer;
 }
 
 .tag-suggestion[aria-selected='true'],
 .tag-suggestion:hover {
-  background: var(--sidebar-bg);
+  background: var(--surface-sub);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tag-box,
+  .tag-recommend-chip {
+    transition: none;
+  }
 }
 
 .tag-input .hint {
@@ -83,14 +104,12 @@
 
 .tag-error {
   margin: 6px 0 0;
-  color: #b91c1c;
-  font-size: 14px;
+  color: var(--error-text);
+  font-size: var(--fs-sm);
 }
 
 .tag-retry {
   margin-left: 8px;
-  padding: 2px 10px;
-  font-size: 13px;
 }
 
 /* 비슷한 기록의 태그 추천 칩 (D-081). 누르기 전에는 태그가 붙지 않는다 */
@@ -98,24 +117,28 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  margin-top: 6px;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .tag-input .tag-recommend .hint {
   margin: 0;
 }
 
+/* 추천 칩: 다른 칩과 같은 모양 */
 .tag-recommend-chip {
-  padding: 1px 10px;
-  border: 1px dashed var(--border);
-  border-radius: 999px;
-  background: var(--bg);
-  color: var(--text-sub);
-  font-size: 13px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--ink-sub);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
   cursor: pointer;
+  transition: background-color 0.12s var(--ease);
 }
 
 .tag-recommend-chip:hover {
-  background: var(--sidebar-bg);
+  background: var(--surface-sub);
 }

@@ -38,6 +38,14 @@ function SaveResult({ saved, feedback, feedbackStatus, onRequestFeedback, onSumm
   return (
     <section className="resolved" aria-labelledby="resolved-title">
       <div className={`resolved-banner ${last}`}>
+        {/* 해결로 저장했을 때만 보이는 장식용 체크 (읽지 않는다). 제목 문구는 그대로다 */}
+        {last === 'solved' && (
+          <span className="resolved-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12.5l4.5 4.5L19 7.5" pathLength={1} />
+            </svg>
+          </span>
+        )}
         <h2 id="resolved-title" className="resolved-title">
           {banner.title}
         </h2>
