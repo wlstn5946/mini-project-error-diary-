@@ -154,6 +154,8 @@ export type SimilarError = {
   attempt_count: number
   tags: NamedItem[]
   resolved_at: string
+  // 이 기록(뿌리)을 가리키는 재사용 기록 수 (D-121)
+  reuse_count: number
 }
 
 // 비슷한 기록을 찾지 못해도 화면이 멈추지 않게, 실패하면 예외 대신 null을 돌려준다. 버튼은 계속 쓸 수 있다.

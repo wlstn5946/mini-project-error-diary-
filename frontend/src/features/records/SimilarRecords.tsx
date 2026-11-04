@@ -1,7 +1,7 @@
 import { keyLine } from '../../errorText'
 import type { SimilarError } from './errorsApi'
 
-// 비슷한 기존 기록 (시안 에러해결창_예시.png ①). 시안의 "재사용 N회" 배지와 "에러 일기 보기" 버튼은 이번 범위에서 뺐다 (SCREEN-SPEC_4).
+// 비슷한 기존 기록 (시안 에러해결창_예시.png ①). "재사용 N회" 배지는 같은 해결법을 묶은 카드에 단다 (D-121). 시안의 "에러 일기 보기" 버튼은 이번 범위에서 뺐다 (SCREEN-SPEC_4).
 // "해당 없음 → AI에게 묻기" 버튼은 입력창 쪽(SolvePage)에 하나만 둔다 (D-064).
 // 목록은 유사도 높은 순으로 오고, 위 두 개만 보이며 나머지는 스크롤로 본다 (CSS .similar-list).
 
@@ -37,6 +37,7 @@ function SimilarRecords({ matches, applyingId, busy, error, onApply }: Props) {
                   <span className="similar-badge percent">유사도 {m.similarity}%</span>
                   {m.matched_by === 'key_line' && <span className="similar-badge key-line">핵심 줄 일치</span>}
                   <span className="similar-badge resolved">해결</span>
+                  {m.reuse_count > 0 && <span className="similar-badge reuse">재사용 {m.reuse_count}회</span>}
                 </div>
                 <h3 className="similar-title" title={title}>
                   {title}
