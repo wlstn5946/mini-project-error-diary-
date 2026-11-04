@@ -150,7 +150,7 @@ function SeriesDetail({ series, backTo, onSeriesChanged, onGone, onDeleted, onNe
             <li key={item.id} className="series-item">
               <span className="series-no">{index + 1}</span>
               <Link className="record-item series-link" to={`/records/${item.id}`} state={{ backTo }}>
-                <RecordItemContent item={item} showDate showSeries={false} />
+                <RecordItemContent item={item} showDate showSeries={false} reuseBadge />
               </Link>
               <span className="series-arrows">
                 <button

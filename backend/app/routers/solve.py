@@ -197,6 +197,8 @@ class AttemptsCreateRequest(BaseModel):
     attempts: list[AttemptInput] = []
     # 내 한 줄 정리. 마지막 시도가 solved이면 필수이고, 그 밖에는 선택이다. (D-067)
     summary: str | None = None
+    # "이 방법 적용"으로 고른 기록의 id. 서버가 맨 처음 원본으로 바꾸고, 이 에러의 값이 비어 있을 때만 채운다. (D-080)
+    reused_from_id: int | None = None
 
 
 class NamedItemResponse(BaseModel):
@@ -253,6 +255,12 @@ def create_attempts(error_id: int, body: AttemptsCreateRequest, db: Session = De
     summary = (body.summary or "").strip() or None
     if solved and summary is None:
         raise HTTPException(status_code=422, detail="해결됨으로 저장하려면 한 줄 정리를 입력해 주세요.")
+    reused_root_id = None
+    if body.reused_from_id is not None:
+        try:
+            reused_root_id = errors_repo.get_reuse_root_id(db, body.reused_from_id, error.id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
 
     # seq는 서버가 기존 시도 다음 번호부터 매긴다 (D-071, 함수 추가 없음)
     first_seq = attempts_repo.next_seq(db, error.id)
@@ -262,6 +270,8 @@ def create_attempts(error_id: int, body: AttemptsCreateRequest, db: Session = De
         errors_repo.mark_resolved(db, error, summary)
     elif summary is not None:
         errors_repo.set_summary(db, error, summary)  # 정리를 비워 보냈으면 기존 정리를 그대로 둔다 (D-067, D-072)
+    if reused_root_id is not None:
+        errors_repo.fill_reused_from(db, error, reused_root_id)  # 팀원 1 파일 함수 추가 (D-080)
     try:
         db.commit()
     except IntegrityError:

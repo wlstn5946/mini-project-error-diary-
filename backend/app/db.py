@@ -1,5 +1,6 @@
 """공용: DB 연결과 테이블 생성 (DATA-MODEL_N.md). DB는 PostgreSQL이다(로컬, 이후 Supabase). (D-057, D-058, D-059)"""
 
+import re
 from collections.abc import Iterator
 
 from sqlalchemy import create_engine, inspect, text
@@ -70,6 +71,41 @@ def _backfill_series_order() -> None:
         )
 
 
+# 옛 "이 방법 적용"이 남긴 시도 문구 (D-069). reused_from_id를 한 번 채울 때만 읽는다. (D-080)
+_LEGACY_REUSE_ACTION = re.compile(r"^기존 기록 #(\d+)의 해결 방법 적용$")
+
+
+def _backfill_reused_from_id() -> None:
+    """reused_from_id 컬럼을 방금 추가했을 때, 옛 시도 문구의 기록 번호 N을 채운다. (D-080, D-052)
+
+    N이 없는 기록(지워졌거나 번호가 없음)은 비워 둔다. N이 재사용 기록이면 그 기록을 따라가 맨 처음 원본(뿌리)을 넣는다.
+    """
+    with engine.begin() as conn:
+        existing = {row[0] for row in conn.execute(text("SELECT id FROM errors"))}
+        # 기록마다 가장 이른 문구 시도 하나만 본다
+        parent: dict[int, int] = {}
+        rows = conn.execute(text("SELECT error_id, action FROM attempts ORDER BY error_id, seq"))
+        for error_id, action in rows:
+            match = _LEGACY_REUSE_ACTION.match(action)
+            if match is None or error_id in parent:
+                continue
+            source_id = int(match.group(1))
+            if source_id != error_id and source_id in existing:
+                parent[error_id] = source_id
+
+        for error_id, source_id in parent.items():
+            root, seen = source_id, {error_id}
+            while root in parent and root not in seen:  # 순환이 있어도 멈춘다
+                seen.add(root)
+                root = parent[root]
+            if root == error_id:
+                continue
+            conn.execute(
+                text("UPDATE errors SET reused_from_id = :root WHERE id = :id AND reused_from_id IS NULL"),
+                {"root": root, "id": error_id},
+            )
+
+
 def init_db() -> None:
     """없는 테이블을 만들고, 이미 있는 테이블에는 없는 컬럼만 추가한다. 그 밖의 구조는 바꾸지 않는다. (D-014, D-052)"""
     from app import models  # noqa: F401  테이블 정의를 Base에 등록한다
@@ -78,3 +114,5 @@ def init_db() -> None:
     added = _add_missing_columns()
     if ("errors", "series_order") in added:
         _backfill_series_order()
+    if ("errors", "reused_from_id") in added:
+        _backfill_reused_from_id()

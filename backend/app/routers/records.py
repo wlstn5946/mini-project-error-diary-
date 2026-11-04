@@ -92,6 +92,8 @@ class ErrorCreateRequest(BaseModel):
     attempts: list[AttemptInput] = []
     # 내 한 줄 정리. 마지막 시도가 해결됨이면 필수이고, 그 밖에는 선택이다.
     summary: str | None = None
+    # "이 방법 적용"으로 고른 기록의 id. 서버가 맨 처음 원본으로 바꿔 저장한다. (D-080)
+    reused_from_id: int | None = None
 
 
 class NamedItem(BaseModel):
@@ -234,6 +236,12 @@ def create_error(body: ErrorCreateRequest, db: Session = Depends(get_db)) -> Err
     summary = (body.summary or "").strip() or None
     if solved and summary is None:
         raise _invalid("해결됨으로 저장하려면 한 줄 정리를 입력해 주세요.")  # A-006과 같은 문구 (D-026)
+    reused_from_id = None
+    if body.reused_from_id is not None:
+        try:
+            reused_from_id = errors_repo.get_reuse_root_id(db, body.reused_from_id)
+        except ValueError as exc:
+            raise _invalid(str(exc))
 
     # 먼저 모두 검사하고, 통과하면 그때 만든다. 중간에 실패해도 커밋 전이라 아무것도 남지 않는다.
     if body.series_id is not None and body.new_series_name is not None:
@@ -255,7 +263,9 @@ def create_error(body: ErrorCreateRequest, db: Session = Depends(get_db)) -> Err
     if series is None and new_series_name:
         series = series_repo.create_series(db, new_series_name)
     tags += [tags_repo.create_tag(db, name) for name in new_tag_names]
-    error = errors_repo.create_error(db, error_message, situation, series.id if series else None, [tag.id for tag in tags])
+    error = errors_repo.create_error(
+        db, error_message, situation, series.id if series else None, [tag.id for tag in tags], reused_from_id
+    )
     saved = [attempts_repo.create_attempt(db, error.id, seq, action, result) for seq, (action, result) in enumerate(attempts, 1)]
     if solved:
         errors_repo.mark_resolved(db, error, summary)  # 팀원 2 함수 그대로 (D-030)
@@ -290,6 +300,20 @@ class ErrorListItem(BaseModel):
     resolved_at: str | None
     # 오래된 기록인가: 미해결이고 등록한 지 14일 이상. 화면의 빨간 불이 이 값을 따른다. (D-078)
     is_stale: bool
+    # 재사용 기록이 가리키는 맨 처음 원본. 원본이면 None이다. (D-080)
+    reused_from_id: int | None
+    # 이 기록을 재사용한 기록 전체 수. 태그·시리즈 필터와 상관없다. (D-081)
+    reuse_count: int
+
+
+class ReuseItem(BaseModel):
+    """원본 상세(A-009)의 재사용 기록 한 건. 그 기록의 상황·태그·시리즈를 그대로 보여준다. (D-081)"""
+
+    id: int
+    created_at: str
+    situation: str | None
+    series: NamedItem | None
+    tags: list[NamedItem]
 
 
 class ErrorDetailResponse(ErrorListItem):
@@ -298,6 +322,8 @@ class ErrorDetailResponse(ErrorListItem):
     # AI 피드백. 이전 기록이나 받기에 실패한 기록은 None이다. 목록(A-008)에는 넣지 않는다. (Q-003)
     ai_feedback: str | None
     attempts: list[AttemptItem]
+    # 이 기록을 재사용한 기록을 날짜순으로. 재사용 기록 자신은 빈 배열이다. (D-081)
+    reuses: list[ReuseItem]
 
 
 def _list_items(db: Session, errors: list[ErrorRecord]) -> list[ErrorListItem]:
@@ -306,6 +332,7 @@ def _list_items(db: Session, errors: list[ErrorRecord]) -> list[ErrorListItem]:
     series = series_repo.get_series_by_ids(db, {error.series_id for error in errors if error.series_id is not None})
     tags = errors_repo.get_tags_by_error_ids(db, error_ids)
     counts = attempts_repo.count_by_error_ids(db, error_ids)
+    reuse_counts = errors_repo.count_reuses_by_ids(db, error_ids)
     cutoff = errors_repo.stale_cutoff()
     return [
         ErrorListItem(
@@ -319,6 +346,8 @@ def _list_items(db: Session, errors: list[ErrorRecord]) -> list[ErrorListItem]:
             created_at=error.created_at,
             resolved_at=error.resolved_at,
             is_stale=errors_repo.is_stale(error, cutoff),
+            reused_from_id=error.reused_from_id,
+            reuse_count=reuse_counts.get(error.id, 0),
         )
         for error in errors
     ]
@@ -372,12 +401,24 @@ def get_error_detail(error_id: int, db: Session = Depends(get_db)) -> ErrorDetai
     if error is None:
         raise HTTPException(status_code=404, detail="에러 기록을 찾을 수 없어요.")
     item = _list_items(db, [error])[0]
+    children = errors_repo.list_reuses(db, error.id)
+    child_items = {child.id: child_item for child, child_item in zip(children, _list_items(db, children))}
     return ErrorDetailResponse(
         **item.model_dump(),
         situation=error.situation,
         summary=error.summary,
         ai_feedback=error.ai_feedback,
         attempts=[AttemptItem.model_validate(attempt) for attempt in attempts_repo.list_attempts(db, error.id)],
+        reuses=[
+            ReuseItem(
+                id=child.id,
+                created_at=child.created_at,
+                situation=child.situation,
+                series=child_items[child.id].series,
+                tags=child_items[child.id].tags,
+            )
+            for child in children
+        ],
     )
 
 

@@ -9,12 +9,8 @@ from typing import Literal
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
-from app.models import KST, Attempt, ErrorRecord, ErrorTag, Tag, now_kst
+from app.models import KST, ErrorRecord, ErrorTag, Tag, now_kst
 from app.repositories import attempts as attempts_repo
-
-# 비슷한 기록의 "이 방법 적용"이 남기는 시도 문구 (프론트 SolvePage의 applyMatch와 같게 유지한다, D-069).
-# "재사용 해결" 개수(사이드바 통계, D-074)를 이 문구로 센다.
-REUSE_ACTION_PATTERN = "기존 기록 #%의 해결 방법 적용"
 
 # 등록한 지 이만큼(일) 지난 미해결 기록은 "오래된 기록"이다. 14일 이상이면 해당한다. (D-078)
 STALE_DAYS = 14
@@ -52,17 +48,55 @@ def count_by_status(db: Session) -> dict[str, int]:
 
 
 def count_reused_resolved(db: Session) -> int:
-    """"이 방법 적용"으로 저장한 해결 기록 수. 해결됨 시도의 문구가 REUSE_ACTION_PATTERN인 해결된 에러를 센다. (D-074)"""
-    query = (
-        select(func.count(func.distinct(ErrorRecord.id)))
-        .join(Attempt, Attempt.error_id == ErrorRecord.id)
-        .where(
-            ErrorRecord.status == "resolved",
-            Attempt.result == "solved",
-            Attempt.action.like(REUSE_ACTION_PATTERN),
-        )
-    )
+    """"이 방법 적용"으로 저장한 해결 기록 수. 원본을 가리키는(reused_from_id가 있는) 해결된 에러를 센다. (D-074, D-080)"""
+    query = select(func.count()).where(ErrorRecord.status == "resolved", ErrorRecord.reused_from_id.is_not(None))
     return db.scalar(query) or 0
+
+
+def get_reuse_root_id(db: Session, source_id: int, error_id: int | None = None) -> int:
+    """"이 방법 적용"으로 고른 기록 source_id에서 reused_from_id에 넣을 맨 처음 원본(뿌리)의 id를 구한다. (D-080)
+
+    고른 기록이 이미 재사용 기록이면 그 기록의 reused_from_id를 돌려준다. error_id는 이미 있는 기록에 연결할 때
+    (A-006) 그 기록의 id다. 쓸 수 없으면 ValueError(화면에 보여줄 문구)를 던진다: 없는 기록, 해결되지 않은 원본, 자기 자신.
+    """
+    source = db.get(ErrorRecord, source_id)
+    if source is None:
+        raise ValueError("재사용할 기록을 찾을 수 없어요.")
+    root_id = source.reused_from_id or source.id
+    if error_id is not None and error_id in (source.id, root_id):
+        raise ValueError("자기 자신은 재사용할 수 없어요.")
+    root = source if root_id == source.id else db.get(ErrorRecord, root_id)
+    if root is None or root.status != "resolved":
+        raise ValueError("해결된 기록만 재사용할 수 있어요.")
+    return root_id
+
+
+def count_reuses_by_ids(db: Session, error_ids: list[int]) -> dict[int, int]:
+    """원본마다 재사용 기록(자식) 수. 없으면 키가 없다(0으로 본다). 태그·시리즈와 상관없이 전체 수다. (D-081)"""
+    if not error_ids:
+        return {}
+    query = (
+        select(ErrorRecord.reused_from_id, func.count())
+        .where(ErrorRecord.reused_from_id.in_(error_ids))
+        .group_by(ErrorRecord.reused_from_id)
+    )
+    return {root_id: count for root_id, count in db.execute(query)}
+
+
+def list_reuses(db: Session, root_id: int) -> list[ErrorRecord]:
+    """원본의 재사용 기록을 날짜순(오래된 것 먼저)으로. 상세(A-009)의 타임라인에 쓴다. (D-081)"""
+    query = select(ErrorRecord).where(ErrorRecord.reused_from_id == root_id).order_by(ErrorRecord.created_at, ErrorRecord.id)
+    return list(db.scalars(query))
+
+
+def fill_reused_from(db: Session, error: ErrorRecord, root_id: int) -> None:
+    """이어서 해결하기(A-006)에서 "이 방법 적용"을 했을 때, 그 기록의 reused_from_id가 비어 있을 때만 채운다. (D-080)
+
+    커밋은 호출하는 쪽에서 한다.
+    """
+    if error.reused_from_id is None:
+        error.reused_from_id = root_id
+        db.flush()
 
 
 def list_errors(
@@ -131,8 +165,9 @@ def create_error(
     situation: str | None,
     series_id: int | None,
     tag_ids: list[int],
+    reused_from_id: int | None = None,
 ) -> ErrorRecord:
-    """미해결 상태로 저장한다. 커밋은 호출하는 쪽에서 한다. 새 시리즈·태그와 한 트랜잭션으로 묶기 위해서다. (D-025)
+    """미해결 상태로 저장한다. reused_from_id는 get_reuse_root_id()로 구한 뿌리 id다. (D-080) 커밋은 호출하는 쪽에서 한다. 새 시리즈·태그와 한 트랜잭션으로 묶기 위해서다. (D-025)
 
     시리즈에 넣으면 그 시리즈의 마지막 순서 + 1을 series_order로 매긴다. 에러를 만드는 어느 경로(에러 등록,
     비슷한 기록의 "이 방법 적용")든 여기를 거치므로 순서 매기기는 이 한 곳에 둔다. (D-051)
@@ -147,6 +182,7 @@ def create_error(
         series_id=series_id,
         series_order=series_order,
         status="unresolved",
+        reused_from_id=reused_from_id,
     )
     db.add(error)
     db.flush()
@@ -210,10 +246,13 @@ def update_error(
 
 
 def delete_error(db: Session, error: ErrorRecord) -> None:
-    """기록을 지운다 (D-043). 외래 키 때문에 attempts → error_tags → errors 순서로 지운다. CASCADE는 쓰지 않는다. (D-044)
+    """기록을 지운다 (D-043). 외래 키 때문에 자식의 reused_from_id를 NULL로 바꾼 뒤 attempts → error_tags → errors 순서로 지운다.
+    CASCADE는 쓰지 않는다. (D-044, D-080)
 
-    쓰이지 않게 된 태그·시리즈는 남긴다. (D-046) 커밋은 호출하는 쪽에서 한다. 중간에 실패하면 커밋 전이라 아무것도 지워지지 않는다.
+    원본을 지워도 재사용 기록은 남는다. 쓰이지 않게 된 태그·시리즈도 남긴다. (D-046)
+    커밋은 호출하는 쪽에서 한다. 중간에 실패하면 커밋 전이라 아무것도 지워지지 않는다.
     """
+    db.execute(update(ErrorRecord).where(ErrorRecord.reused_from_id == error.id).values(reused_from_id=None))
     attempts_repo.delete_by_error_id(db, error.id)
     db.execute(delete(ErrorTag).where(ErrorTag.error_id == error.id))
     db.delete(error)
