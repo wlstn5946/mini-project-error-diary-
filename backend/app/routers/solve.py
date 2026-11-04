@@ -4,10 +4,12 @@
 이번 범위는 A-005(AI 해결책 제안, previous_attempts 포함), A-006(시도 기록), A-007(한 줄 정리 수정), A-016(AI 피드백)을 구현한다.
 SQL은 이 파일에 쓰지 않고 backend/app/repositories/에만 둔다. (D-016)
 프롬프트·응답 JSON 형식: docs/PROMPTS/PROMPTS_2.md
+Gemini로 보내기 전 민감 정보 가리기 (D-125 제안): 보내는 글에서만 가리고, DB 저장 값·화면 표시 값은 원문 그대로다.
 계정별 분리 (D-086, D-087, D-105): A-006, A-007, A-016은 get_owned_error로 소유를 확인하고 남의 기록은 404다. A-005는 로그인한 사용자의 해결 기록에서 관련 기록을 서버가 직접 찾아 프롬프트에 붙인다(D-123). 요청 본문으로 기록 id·내용은 받지 않는다.
 """
 
 import logging
+import re
 import time
 from collections.abc import Callable
 from difflib import SequenceMatcher
@@ -50,6 +52,7 @@ PROMPT = """너는 파이썬·코딩 에러를 분석해 주는 시니어 개발
 - solutions: 바로 실행할 수 있는 해결 제안을 순서대로 2~5개 쓴다. 명령어·코드는 짧게 포함해도 된다.
 - confidence: 입력만으로 원인을 얼마나 확신하는지 "높음", "보통", "낮음" 중 하나로 쓴다.
 - 에러 메시지가 아니거나 정보가 부족하면 confidence를 "낮음"으로 하고, cause에 부족한 정보를 적는다.
+- <SECRET>은 사용자를 보호하려고 가린 비밀 값, <USER>는 가린 사용자 이름이다. 값이 비어 있거나 잘못됐다고 판단하지 말고, 원래 값을 추측하거나 다시 쓰라고 하지 않는다.
 
 <error>
 {error_message}
@@ -90,6 +93,7 @@ FEEDBACK_PROMPT = """너는 개발 학습을 돕는 시니어 개발자다. 사�
 - <summary>가 (없음)이면 시도 기록만으로 피드백하고, 한 줄 정리를 남기면 좋은 점을 함께 말한다.
 - <summary>가 있으면 그 정리가 다음에 다시 볼 때 도움이 될지도 살펴본다.
 - 시도 결과의 한글 표시(해결됨·해결 안 됨·일부 해결)를 그대로 참고한다.
+- <SECRET>은 사용자를 보호하려고 가린 비밀 값, <USER>는 가린 사용자 이름이다. 값이 비어 있거나 잘못됐다고 판단하지 말고, 원래 값을 추측하거나 다시 쓰라고 하지 않는다.
 
 <e>
 {error_message}
@@ -151,12 +155,45 @@ class SuggestionResponse(BaseModel):
     solutions: list[str] = []
     message: str | None = None
     references: list[ReferenceResponse] = []
+    # Gemini로 보내기 전에 가린 민감 정보 개수. <USER>는 세지 않는다. unavailable이면 0 (D-125)
+    masked_count: int = 0
 
 
 # 내 과거 기록 후보 (D-123). 상수로 두어 나중에 바꿀 수 있게 한다.
 HISTORY_MIN_SIMILARITY = 40  # %
 HISTORY_LIMIT = 3
 HISTORY_TEXT_MAX = 200
+
+# Gemini로 보내기 전 민감 정보 가리기 (D-125). 위에서부터 순서대로 적용하고, 같은 글에 두 번 적용해도 결과가 같다.
+_SECRET = "<SECRET>"
+_KV_NAMES = "password|passwd|pwd|secret|token|api_key|apikey|api-key|access_key|secret_key|client_secret|private_key"
+_KV = re.compile(
+    rf"""(?i)(?<![A-Za-z0-9])({_KV_NAMES})(?![A-Za-z0-9])"""
+    r"""(\s*[=:]\s*)(?:(["'])(?!<SECRET>)([^"']+)\3|(?!<SECRET>)([^\s"',;)]+))"""
+)
+_SECRET_PATTERNS: list[tuple[re.Pattern[str], str | Callable[[re.Match[str]], str]]] = [
+    (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.S), _SECRET),
+    (re.compile(r"\b([A-Za-z][A-Za-z0-9+.\-]*://)[^\s/:@]+:[^\s/@]+@"), r"\1<SECRET>@"),
+    (re.compile(r"AIza[0-9A-Za-z_\-]{35}"), _SECRET),
+    (re.compile(r"\bsk-[A-Za-z0-9_\-]{20,}"), _SECRET),
+    (re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})"), _SECRET),
+    (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), _SECRET),
+    (re.compile(r"\bxox[abprs]-[A-Za-z0-9\-]{10,}"), _SECRET),
+    (re.compile(r"\beyJ[A-Za-z0-9_\-]{10,}\.eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}"), _SECRET),
+    (re.compile(r"(?i)\b(Bearer)\s+[A-Za-z0-9._\-+/=]{16,}"), r"\1 <SECRET>"),
+    (_KV, lambda m: f"{m.group(1)}{m.group(2)}{m.group(3)}{_SECRET}{m.group(3)}" if m.group(3) else f"{m.group(1)}{m.group(2)}{_SECRET}"),
+]
+_USER_PATH = re.compile(r"(/Users/|/home/|[A-Za-z]:\\Users\\)(?!<USER>)([^/\\\s]+)")
+
+
+def redact_secrets(text: str) -> tuple[str, int]:
+    """(가린 글, 가린 개수). <USER>(사용자 이름 경로)는 바꿔도 개수에 세지 않는다. 원문·가린 글은 로그에 남기지 않는다."""
+    count = 0
+    for pattern, repl in _SECRET_PATTERNS:
+        text, n = pattern.subn(repl, text)
+        count += n
+    text = _USER_PATH.sub(r"\1<USER>", text)
+    return text, count
 
 
 def _norm(text: str) -> str:
@@ -220,18 +257,27 @@ def pick_history(db: Session, user_id: int, error_message: str, tag_ids: list[in
 
 def build_prompt(
     error_message: str, previous_attempts: list[PreviousAttempt], history: list[HistoryItem] | None = None
-) -> str:
-    prompt = PROMPT.format(error_message=error_message)
+) -> tuple[str, int]:
+    """(프롬프트, 가린 개수). 보내는 글만 가리고 history·previous_attempts 원본은 바꾸지 않는다. (D-125)"""
+    total = 0
+
+    def mask(text: str) -> str:
+        nonlocal total
+        masked, n = redact_secrets(text)
+        total += n
+        return masked
+
+    prompt = PROMPT.format(error_message=mask(error_message))
     if previous_attempts:
-        lines = [f"{i}. [{RESULT_LABELS[a.result]}] {a.action.strip()}" for i, a in enumerate(previous_attempts, 1)]
+        lines = [f"{i}. [{RESULT_LABELS[a.result]}] {mask(a.action.strip())}" for i, a in enumerate(previous_attempts, 1)]
         prompt += PREVIOUS_ATTEMPTS_PROMPT.format(attempts="\n".join(lines))
     if history:
         lines = [
-            f"{i}. [#{h.id}] 핵심 줄: {h.key_line} / 정리: {h.summary} / 태그: {', '.join(h.tags) or '(없음)'}"
+            f"{i}. [#{h.id}] 핵심 줄: {mask(h.key_line)} / 정리: {mask(h.summary)} / 태그: {', '.join(h.tags) or '(없음)'}"
             for i, h in enumerate(history, 1)
         ]
         prompt += MY_HISTORY_PROMPT.format(history="\n".join(lines))
-    return prompt
+    return prompt, total
 
 
 T = TypeVar("T", bound=BaseModel)
@@ -298,7 +344,7 @@ def create_ai_suggestion(
         history = []
     db.rollback()  # 읽기를 끝내고, Gemini를 기다리는 동안 DB 트랜잭션을 열어 두지 않는다.
 
-    prompt = build_prompt(error_message, body.previous_attempts, history)
+    prompt, masked_count = build_prompt(error_message, body.previous_attempts, history)
     analysis = _generate_json(prompt, GeminiAnalysis, lambda a: bool(a.cause.strip() and a.solutions))
     if analysis is None:
         return _unavailable()
@@ -311,6 +357,7 @@ def create_ai_suggestion(
         cause=analysis.cause,
         solutions=analysis.solutions,
         references=references,
+        masked_count=masked_count,
     )
 
 
@@ -479,11 +526,12 @@ def create_feedback(
     if not saved_attempts and not summary:
         raise HTTPException(status_code=422, detail="시도 기록이 없어 피드백을 받을 수 없어요.")
 
-    attempt_lines = [f"{a.seq}. [{RESULT_LABELS[a.result]}] {a.action.strip()}" for a in saved_attempts]
+    # 보내기 전 민감 정보 가리기 (D-125). 응답에는 개수를 담지 않는다.
+    attempt_lines = [f"{a.seq}. [{RESULT_LABELS[a.result]}] {redact_secrets(a.action.strip())[0]}" for a in saved_attempts]
     prompt = FEEDBACK_PROMPT.format(
-        error_message=error.error_message.strip(),
+        error_message=redact_secrets(error.error_message.strip())[0],
         attempts="\n".join(attempt_lines) or "(없음)",
-        summary=summary or "(없음)",
+        summary=redact_secrets(summary)[0] if summary else "(없음)",
     )
     db.rollback()  # 읽기를 끝내고, Gemini를 기다리는 동안 DB 트랜잭션을 열어 두지 않는다. 저장 전에 다시 읽는다.
 

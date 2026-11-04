@@ -25,6 +25,7 @@ function AiSuggestionCard({ result, retrying, onRetry }: Props) {
       <h2 className="ai-title">
         ✨ AI 분석 · 확신도 <span className={`confidence c-${result.confidence}`}>{result.confidence}</span>
       </h2>
+      {result.masked_count > 0 && <p className="ai-masked">🔒 민감해 보이는 정보 {result.masked_count}개를 가리고 보냈어요</p>}
       <p className="ai-label">추정 원인</p>
       <p className="ai-text">{result.cause}</p>
       <p className="ai-label">해결 제안</p>
