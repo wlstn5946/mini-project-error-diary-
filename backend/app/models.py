@@ -61,6 +61,9 @@ class ErrorRecord(Base):
     # AI 피드백. 기록 저장 뒤 받아서 저장하고, 한 줄 정리를 고치면 다시 받아 덮어쓴다. 없으면 NULL. (Q-003)
     # 이미 만들어진 DB에는 init_db()가 컬럼을 추가한다. (D-052)
     ai_feedback: Mapped[str | None] = mapped_column(String)
+    # 재사용 기록이 가리키는 맨 처음 원본(뿌리). 원본이면 NULL이다. 묶음은 한 단계만 있다. (D-080)
+    # 이미 만들어진 DB에는 init_db()가 컬럼을 추가하고 옛 시도 문구로 한 번 채운다. (D-052)
+    reused_from_id: Mapped[int | None] = mapped_column(ForeignKey("errors.id"))
     created_at: Mapped[str] = mapped_column(String, default=now_kst)
 
 

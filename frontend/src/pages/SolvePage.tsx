@@ -139,12 +139,23 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
   }, [])
 
   // 일반 모드는 A-002로 에러와 시도를 함께 저장하고, 이어서 해결하기는 A-006으로 이번 시도만 저장한다 (D-077)
-  function persist(choice: SeriesChoice, attempts: AttemptInput[], summary: string | null): Promise<SavedError> {
-    if (detail) return createAttempts(detail.id, { attempts, summary })
-    return createError(buildErrorBody(choice, attempts, summary))
+  // reusedFromId는 "이 방법 적용"으로 고른 기록의 ID다. 원본과 연결하는 것은 서버가 한다 (D-080)
+  function persist(
+    choice: SeriesChoice,
+    attempts: AttemptInput[],
+    summary: string | null,
+    reusedFromId: number | null = null,
+  ): Promise<SavedError> {
+    if (detail) return createAttempts(detail.id, { attempts, summary, reused_from_id: reusedFromId })
+    return createError(buildErrorBody(choice, attempts, summary, reusedFromId))
   }
 
-  function buildErrorBody(choice: SeriesChoice, attempts: AttemptInput[], summary: string | null): ErrorCreateBody {
+  function buildErrorBody(
+    choice: SeriesChoice,
+    attempts: AttemptInput[],
+    summary: string | null,
+    reusedFromId: number | null,
+  ): ErrorCreateBody {
     return {
       error_message: message,
       situation: situation.trim() || null,
@@ -154,6 +165,7 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
       new_tag_names: tagsValue.newNames,
       attempts,
       summary,
+      reused_from_id: reusedFromId,
     }
   }
 
@@ -212,7 +224,13 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
     setApplyError(null)
     let record: SavedError
     try {
-      record = await persist(seriesChoice, [{ action: `기존 기록 #${match.id}의 해결 방법 적용`, result: 'solved' }], match.summary)
+      // 시도 문구는 타임라인 표시용으로 남기고, 원본 연결은 reused_from_id로 한다 (D-080)
+      record = await persist(
+        seriesChoice,
+        [{ action: `기존 기록 #${match.id}의 해결 방법 적용`, result: 'solved' }],
+        match.summary,
+        match.id,
+      )
     } catch (e) {
       setApplyError(e instanceof Error ? `${e.message} 입력한 내용은 그대로 있어요.` : APPLY_FAILED)
       return
@@ -305,7 +323,7 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
         ) : (
           <>
             <SeriesSelect onChange={setSeriesChoice} disabled={locked} />
-            <TagInput onChange={setTagsValue} disabled={locked} />
+            <TagInput onChange={setTagsValue} disabled={locked} suggestedTags={matches.flatMap((m) => m.tags)} />
           </>
         )}
       </div>

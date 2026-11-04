@@ -4,7 +4,8 @@ import './TagInput.css'
 
 // 에러 입력 시 태그 지정 (R-001, D-006). 시안 에러해결창_예시.png ①의 "태그 (최대 5개)" 부분.
 // 새 태그는 여기서 저장하지 않고 이름만 부모에게 넘긴다. 에러를 저장할 때 함께 만든다. (D-020)
-// 추천 태그(+패키지 등)는 Later 후보라 만들지 않는다. (D-023)
+// 일반 추천 태그(+패키지 등)는 Later 후보라 만들지 않는다. (D-023)
+// 다만 비슷한 기록이 찾아졌을 때는 그 기록들의 태그를 추천 칩으로 보여준다. 누르기 전에는 태그가 붙지 않는다. (D-081)
 
 // 에러 저장(A-002) 요청에 그대로 쓸 모양: 기존 태그는 ID, 새 태그는 이름
 export type TagsValue = {
@@ -18,6 +19,8 @@ type Props = {
   disabled?: boolean
   // 기록 수정(A-010)에서 현재 태그를 처음부터 채워 두는 용도. 없으면 빈 상태로 시작한다.
   initialTags?: { id: number; name: string }[]
+  // 비슷한 기록의 태그. 추천 칩으로만 보여주고 이미 고른 태그는 뺀다 (D-081)
+  suggestedTags?: { id: number; name: string }[]
 }
 
 type Status = 'loading' | 'ready' | 'error'
@@ -38,7 +41,7 @@ function tagKey(name: string) {
   return normalizeTag(name).toLowerCase()
 }
 
-function TagInput({ onChange, disabled = false, initialTags }: Props) {
+function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [] }: Props) {
   const [status, setStatus] = useState<Status>('loading')
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [reloadKey, setReloadKey] = useState(0)
@@ -67,6 +70,12 @@ function TagInput({ onChange, disabled = false, initialTags }: Props) {
   const suggestions = key && !disabled
     ? allTags.filter((t) => tagKey(t.name).includes(key) && !chosenKeys.has(tagKey(t.name))).slice(0, MAX_SUGGESTIONS)
     : []
+
+  // 같은 태그는 한 번만, 이미 고른 태그는 뺀다. 최대 개수에 이미 찼으면 보여주지 않는다
+  const recommended =
+    disabled || chips.length >= MAX_TAGS
+      ? []
+      : [...new Map(suggestedTags.map((t) => [tagKey(t.name), t])).values()].filter((t) => !chosenKeys.has(tagKey(t.name)))
 
   function update(next: Chip[]) {
     setChips(next)
@@ -170,6 +179,17 @@ function TagInput({ onChange, disabled = false, initialTags }: Props) {
           onKeyDown={handleKeyDown}
         />
       </div>
+
+      {recommended.length > 0 && (
+        <div className="tag-recommend" role="group" aria-label="비슷한 기록의 태그">
+          <span className="hint">비슷한 기록의 태그</span>
+          {recommended.map((t) => (
+            <button key={t.id} type="button" className="tag-recommend-chip" onClick={() => addTag(t.name)}>
+              + {t.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {showSuggestions && (
         <ul id="tag-suggestions" className="tag-suggestions" role="listbox">

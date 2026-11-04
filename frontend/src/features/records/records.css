@@ -803,3 +803,82 @@
     break-after: avoid;
   }
 }
+
+/* 재사용 기록 묶기 (D-081): 원본 줄 오른쪽 끝의 "재사용 N" 배지와 접힌 재사용 기록 */
+.record-row {
+  display: flex;
+  align-items: flex-start;
+  border-bottom: 1px solid var(--border);
+}
+
+.record-row > .record-item {
+  min-width: 0;
+  flex: 1;
+  border-bottom: none;
+}
+
+.reuse-badge {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border: none;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #075985;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+button.reuse-badge {
+  cursor: pointer;
+}
+
+button.reuse-badge:hover {
+  background: #bae6fd;
+}
+
+.record-row > .reuse-badge,
+.record-row > .reuse-origin-link {
+  margin: 12px 12px 0 0;
+}
+
+/* 줄 안에서 오른쪽 끝에 붙이는 표시용 배지 (시리즈별 탭) */
+.record-head .reuse-badge {
+  margin-left: auto;
+}
+
+.reuse-origin-link {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.reuse-origin-link:hover {
+  background: #e5e7eb;
+}
+
+.record-children {
+  margin: 0 0 0 28px;
+  padding: 0;
+  border-left: 2px solid #bae6fd;
+  list-style: none;
+}
+
+/* 상세 타임라인의 재사용 기록 */
+.timeline-item.reuse::before {
+  background: #0ea5e9;
+}
+
+.timeline-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}

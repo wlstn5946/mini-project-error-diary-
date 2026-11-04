@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { Link } from 'react-router'
 import { RESULT_LABELS } from '../solve/solveApi'
 import { STATUS_LABELS, type ErrorDetail as Detail } from './errorsApi'
 
@@ -23,7 +24,31 @@ function timeLabel(iso: string) {
   return `${m}월 ${d}일 ${iso.slice(11, 16)}`
 }
 
+// "이 방법 적용"이 남긴 시도 문구 (D-069). 재사용 기록이면 "기존 기록 #N"을 원본 상세 링크로 바꿔 보여준다 (D-081).
+const REUSE_ACTION = /^기존 기록 #\d+(의 해결 방법 적용)$/
+
+function AttemptText({ action, originId }: { action: string; originId: number | null }) {
+  const match = REUSE_ACTION.exec(action)
+  // 원본이 지워져 연결이 없으면 문구 그대로 보여준다
+  if (!match || originId === null) return <>{action}</>
+  return (
+    <>
+      <Link to={`/records/${originId}`}>기존 기록 #{originId}</Link>
+      {match[1]}
+    </>
+  )
+}
+
+// 타임라인 항목: 시도와 이 기록을 재사용한 기록을 날짜순으로 합친다 (D-081)
+type TimelineEntry =
+  | { kind: 'attempt'; time: string; attempt: Detail['attempts'][number] }
+  | { kind: 'reuse'; time: string; reuse: Detail['reuses'][number] }
+
 function ErrorDetail({ detail, actions, feedbackSection }: Props) {
+  const entries: TimelineEntry[] = [
+    ...detail.attempts.map((attempt): TimelineEntry => ({ kind: 'attempt', time: attempt.created_at, attempt })),
+    ...detail.reuses.map((reuse): TimelineEntry => ({ kind: 'reuse', time: reuse.created_at, reuse })),
+  ].sort((a, b) => a.time.localeCompare(b.time)) // 같은 시각이면 시도가 먼저 오도록 정렬은 안정 정렬에 맡긴다
   return (
     <article className="detail">
       <header className="detail-header">
@@ -59,15 +84,33 @@ function ErrorDetail({ detail, actions, feedbackSection }: Props) {
             <span className="timeline-time">{timeLabel(detail.created_at)} · 에러 발생</span>
             <span className="timeline-text">{firstLine(detail.error_message)}</span>
           </li>
-          {detail.attempts.map((attempt) => (
-            <li key={attempt.seq} className={`timeline-item ${attempt.result}`}>
-              <span className="timeline-time">
-                {timeLabel(attempt.created_at)} · 시도 {attempt.seq}{' '}
-                <span className={`attempt-result-badge ${attempt.result}`}>{RESULT_LABELS[attempt.result]}</span>
-              </span>
-              <span className="timeline-text">{attempt.action}</span>
-            </li>
-          ))}
+          {entries.map((entry) =>
+            entry.kind === 'attempt' ? (
+              <li key={`attempt-${entry.attempt.seq}`} className={`timeline-item ${entry.attempt.result}`}>
+                <span className="timeline-time">
+                  {timeLabel(entry.attempt.created_at)} · 시도 {entry.attempt.seq}{' '}
+                  <span className={`attempt-result-badge ${entry.attempt.result}`}>{RESULT_LABELS[entry.attempt.result]}</span>
+                </span>
+                <span className="timeline-text">
+                  <AttemptText action={entry.attempt.action} originId={detail.reused_from_id} />
+                </span>
+              </li>
+            ) : (
+              <li key={`reuse-${entry.reuse.id}`} className="timeline-item reuse">
+                <span className="timeline-time">{timeLabel(entry.reuse.created_at)} · 이 방법을 다시 적용했어요</span>
+                {entry.reuse.situation && <span className="timeline-text">{entry.reuse.situation}</span>}
+                <span className="timeline-chips">
+                  {entry.reuse.series && <span className="record-series">{entry.reuse.series.name}</span>}
+                  {entry.reuse.tags.map((tag) => (
+                    <span key={tag.id} className="record-tag">
+                      #{tag.name}
+                    </span>
+                  ))}
+                  <Link to={`/records/${entry.reuse.id}`}>기록 #{entry.reuse.id} 보기</Link>
+                </span>
+              </li>
+            ),
+          )}
         </ol>
         {detail.attempts.length === 0 && <p className="hint">아직 기록한 시도가 없어요.</p>}
       </section>

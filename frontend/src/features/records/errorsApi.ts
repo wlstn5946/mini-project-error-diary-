@@ -17,6 +17,8 @@ export type ErrorCreateBody = {
   attempts: AttemptInput[]
   // 내 한 줄 정리. 마지막 시도가 해결됨이면 필수, 그 밖에는 선택
   summary: string | null
+  // "이 방법 적용"으로 고른 기록의 ID. 서버가 맨 처음 원본으로 바꿔 저장한다 (D-080)
+  reused_from_id?: number | null
 }
 
 type NamedItem = { id: number; name: string }
@@ -90,6 +92,10 @@ export type ErrorListItem = {
   resolved_at: string | null
   // 오래된 기록: 미해결이고 등록한 지 14일 이상. 목록 항목의 빨간 불이 이 값을 따른다 (D-078)
   is_stale: boolean
+  // 재사용 기록이 가리키는 맨 처음 원본. 원본이거나 원본이 지워졌으면 null (D-080)
+  reused_from_id: number | null
+  // 이 기록을 재사용한 기록 전체 수. 태그·시리즈 필터와 상관없다 (D-081)
+  reuse_count: number
 }
 
 // 내 기록 필터. 모두 선택이고, 함께 쓰면 모두 만족하는 기록만 온다 (D-036)
@@ -120,6 +126,8 @@ export type ErrorDetail = ErrorListItem & {
   // AI 피드백. 이전 기록이나 받기에 실패한 기록은 null (Q-003)
   ai_feedback: string | null
   attempts: { seq: number; action: string; result: 'solved' | 'failed' | 'partial'; created_at: string }[]
+  // 이 기록을 재사용한 기록, 날짜순. 재사용 기록 자신은 빈 배열 (D-081)
+  reuses: { id: number; created_at: string; situation: string | null; series: NamedItem | null; tags: NamedItem[] }[]
 }
 
 // A-009. 없는 ID(404)면 null을 돌려준다. 그 밖의 서버 오류·네트워크 오류는 예외를 던진다.

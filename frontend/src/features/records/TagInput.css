@@ -92,3 +92,30 @@
   padding: 2px 10px;
   font-size: 13px;
 }
+
+/* 비슷한 기록의 태그 추천 칩 (D-081). 누르기 전에는 태그가 붙지 않는다 */
+.tag-recommend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.tag-input .tag-recommend .hint {
+  margin: 0;
+}
+
+.tag-recommend-chip {
+  padding: 1px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-sub);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tag-recommend-chip:hover {
+  background: var(--sidebar-bg);
+}

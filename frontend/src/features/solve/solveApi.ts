@@ -70,6 +70,8 @@ export type AttemptsBody = {
   attempts: AttemptInput[]
   // 내 한 줄 정리. 마지막 시도가 해결됨이면 필수, 그 밖에는 선택(비우면 기존 정리를 그대로 둔다)
   summary: string | null
+  // "이 방법 적용"으로 고른 기록의 ID. 이 기록의 값이 비어 있을 때만 서버가 채운다 (D-080)
+  reused_from_id?: number | null
 }
 
 // 실패 이유를 화면에서 나눠 보여주려고 상태 코드를 함께 담는다 (409: 이미 해결된 에러 등). 공용 ApiError와 같다.
