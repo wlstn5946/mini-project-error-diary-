@@ -216,7 +216,7 @@ function RecordsPage() {
       </p>
     )
   ) : (
-    <RecordList items={result.items} backTo={location.pathname + location.search} flat={tagView} />
+    <RecordList items={result.items} backTo={location.pathname + location.search} flat={tagView} query={tagView ? undefined : filters.q.trim()} />
   )
 
   return (

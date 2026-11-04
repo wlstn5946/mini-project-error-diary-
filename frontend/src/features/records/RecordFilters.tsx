@@ -83,8 +83,8 @@ function RecordFilters({
       <input
         type="search"
         className="record-search"
-        placeholder="에러 메시지 검색"
-        aria-label="에러 메시지 검색"
+        placeholder="에러·해결법 검색"
+        aria-label="에러·해결법 검색"
         maxLength={200}
         value={searchText}
         onChange={(e) => onSearchTextChange(e.target.value)}

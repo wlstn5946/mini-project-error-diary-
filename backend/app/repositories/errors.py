@@ -9,10 +9,10 @@ mark_resolved()는 팀원 2가 해결 처리(A-006)용으로 추가했다. (D-03
 from datetime import datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
-from app.models import KST, ErrorRecord, ErrorTag, Series, Tag, now_kst
+from app.models import KST, Attempt, ErrorRecord, ErrorTag, Series, Tag, now_kst
 from app.repositories import attempts as attempts_repo
 
 # 등록한 지 이만큼(일) 지난 미해결 기록은 "오래된 기록"이다. 14일 이상이면 해당한다. (D-078)
@@ -136,6 +136,7 @@ def list_errors(
     series_id가 있으면 그 시리즈의 에러만, 시리즈 안 순서(series_order)대로 돌려준다. (D-042, D-051)
     남의 시리즈·태그 ID는 없는 ID와 같게 빈 결과가 된다. (D-105)
     stale이 True이면 오래된 기록(미해결 + 등록 14일 이상)만 돌려준다. (D-078)
+    q는 에러 메시지·한 줄 정리·상황·시도 내용 중 하나라도 포함하면 찾는다. (D-126)
     """
     query = select(ErrorRecord).where(ErrorRecord.user_id == user_id)
     if series_id is not None:
@@ -146,7 +147,20 @@ def list_errors(
         query = query.where(ErrorRecord.status == status)
     if q:
         # 대소문자 무시, 사용자가 입력한 %·_는 글자 그대로 찾는다
-        query = query.where(ErrorRecord.error_message.icontains(q, autoescape=True))
+        # 시도 내용은 attempts 테이블이지만 목록 조건의 일부라 여기서 서브쿼리로 읽는다 (D-126, D-016 해석)
+        has_action = (
+            select(Attempt.error_id)
+            .where(Attempt.error_id == ErrorRecord.id, Attempt.action.icontains(q, autoescape=True))
+            .exists()
+        )
+        query = query.where(
+            or_(
+                ErrorRecord.error_message.icontains(q, autoescape=True),
+                ErrorRecord.summary.icontains(q, autoescape=True),
+                ErrorRecord.situation.icontains(q, autoescape=True),
+                has_action,
+            )
+        )
     if tag_ids:
         # 고른 태그를 모두 가진 에러만: 고른 태그 중 붙어 있는 개수가 고른 개수와 같아야 한다. 남의 태그는 세지 않는다.
         has_all_tags = (
@@ -162,6 +176,29 @@ def list_errors(
     else:
         query = query.order_by(ErrorRecord.created_at.desc(), ErrorRecord.id.desc())
     return list(db.scalars(query))
+
+
+def get_matching_actions(db: Session, error_ids: list[int], q: str, *, user_id: int) -> dict[int, str]:
+    """검색어(q)가 걸린 시도 중 seq가 가장 작은 것의 action을 에러마다 돌려준다. 걸린 시도가 없는 에러는 빠진다. (D-126)
+
+    목록 전체를 한 번에 가져온다 (N+1 조회 방지). ErrorRecord와 조인해 내 기록의 시도만 읽는다. (D-105)
+    """
+    if not error_ids:
+        return {}
+    query = (
+        select(Attempt.error_id, Attempt.action)
+        .join(ErrorRecord, ErrorRecord.id == Attempt.error_id)
+        .where(
+            Attempt.error_id.in_(error_ids),
+            ErrorRecord.user_id == user_id,
+            Attempt.action.icontains(q, autoescape=True),
+        )
+        .order_by(Attempt.error_id, Attempt.seq)
+    )
+    found: dict[int, str] = {}
+    for error_id, action in db.execute(query):
+        found.setdefault(error_id, action)
+    return found
 
 
 def get_tags_by_error_ids(db: Session, error_ids: list[int], *, user_id: int) -> dict[int, list[Tag]]:

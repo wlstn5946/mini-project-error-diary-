@@ -7,6 +7,7 @@ SQL은 이 파일에 쓰지 않고 backend/app/repositories/에만 둔다. (D-01
 계정별 분리 (D-086, D-087, D-105): 모든 핸들러가 현재 사용자를 받아 repository에 user_id로 넘긴다. 남의 리소스는 없는 것과 똑같이 처리한다.
 """
 
+import re
 from difflib import SequenceMatcher
 from typing import Literal
 
@@ -405,6 +406,10 @@ class ErrorListItem(BaseModel):
     reused_from_id: int | None
     # 이 기록을 재사용한 기록 전체 수. 태그·시리즈 필터와 상관없다. (D-081)
     reuse_count: int
+    # 검색어(q)를 어느 칸에서 찾았는지. q가 없으면 빈 배열. A-009는 항상 빈 배열이다. (D-126)
+    matched_in: list[Literal["error_message", "summary", "situation", "attempt"]] = []
+    # 에러 메시지 밖에서 찾았을 때 그 부분 한 줄. 아니면 None. A-009는 항상 None이다. (D-126)
+    match_snippet: str | None = None
 
 
 class ReuseItem(BaseModel):
@@ -427,8 +432,51 @@ class ErrorDetailResponse(ErrorListItem):
     reuses: list[ReuseItem]
 
 
-def _list_items(db: Session, user_id: int, errors: list[ErrorRecord]) -> list[ErrorListItem]:
-    """시리즈·태그·시도 수를 에러마다 따로 조회하지 않고 한 번씩 모아서 가져온다 (N+1 조회 방지)."""
+SNIPPET_BEFORE, SNIPPET_AFTER = 20, 40
+
+
+def _contains(text: str | None, q: str) -> bool:
+    return bool(text) and re.search(re.escape(q), text, re.IGNORECASE) is not None
+
+
+def _snippet(text: str, q: str) -> str:
+    """찾은 곳 앞 20자·뒤 40자만 한 줄로. 잘렸으면 앞뒤에 …. (D-126)"""
+    one = " ".join(text.split())
+    m = re.search(re.escape(q), one, re.IGNORECASE)
+    if m is None:
+        return one[: SNIPPET_BEFORE + SNIPPET_AFTER] + ("…" if len(one) > SNIPPET_BEFORE + SNIPPET_AFTER else "")
+    start = max(0, m.start() - SNIPPET_BEFORE)
+    end = min(len(one), m.end() + SNIPPET_AFTER)
+    return ("…" if start > 0 else "") + one[start:end] + ("…" if end < len(one) else "")
+
+
+def _match_info(error: ErrorRecord, q: str, action: str | None) -> tuple[list[str], str | None]:
+    """(matched_in, match_snippet). 순서는 error_message → summary → situation → attempt로 고정, 미리보기 우선순위는 정리 → 시도 → 상황. (D-126)"""
+    matched = [
+        name
+        for name, hit in (
+            ("error_message", _contains(error.error_message, q)),
+            ("summary", _contains(error.summary, q)),
+            ("situation", _contains(error.situation, q)),
+            ("attempt", action is not None),
+        )
+        if hit
+    ]
+    snippet = None
+    if "summary" in matched:
+        snippet = _snippet(error.summary or "", q)
+    elif "attempt" in matched:
+        snippet = _snippet(action or "", q)
+    elif "situation" in matched:
+        snippet = _snippet(error.situation or "", q)
+    return matched, snippet
+
+
+def _list_items(db: Session, user_id: int, errors: list[ErrorRecord], q: str | None = None) -> list[ErrorListItem]:
+    """시리즈·태그·시도 수를 에러마다 따로 조회하지 않고 한 번씩 모아서 가져온다 (N+1 조회 방지).
+
+    q가 있으면 어느 칸에서 찾았는지(matched_in, match_snippet)도 채운다. (D-126)
+    """
     error_ids = [error.id for error in errors]
     series = series_repo.get_series_by_ids(
         db, {error.series_id for error in errors if error.series_id is not None}, user_id=user_id
@@ -437,8 +485,12 @@ def _list_items(db: Session, user_id: int, errors: list[ErrorRecord]) -> list[Er
     counts = attempts_repo.count_by_error_ids(db, error_ids)
     reuse_counts = errors_repo.count_reuses_by_ids(db, error_ids, user_id=user_id)
     cutoff = errors_repo.stale_cutoff()
+    actions = errors_repo.get_matching_actions(db, error_ids, q, user_id=user_id) if q else {}
+    matches = {error.id: _match_info(error, q, actions.get(error.id)) for error in errors} if q else {}
     return [
         ErrorListItem(
+            matched_in=matches[error.id][0] if q else [],
+            match_snippet=matches[error.id][1] if q else None,
             id=error.id,
             error_message=error.error_message,
             status=error.status,
@@ -472,7 +524,7 @@ def list_errors(
 ) -> list[ErrorListItem]:
     keyword = (q or "").strip() or None
     errors = errors_repo.list_errors(db, status, list(dict.fromkeys(tag_id)), keyword, series_id, stale, user_id=user.id)
-    return _list_items(db, user.id, errors)
+    return _list_items(db, user.id, errors, keyword)
 
 
 class ErrorStatsResponse(BaseModel):
