@@ -343,7 +343,7 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
         ) : (
           <>
             <SeriesSelect onChange={setSeriesChoice} disabled={locked} />
-            <TagInput onChange={setTagsValue} disabled={locked} suggestedTags={matches.flatMap((m) => m.tags)} />
+            <TagInput onChange={setTagsValue} disabled={locked} suggestedTags={matches.flatMap((m) => m.tags)} errorText={searchShown?.query ?? ''} />
           </>
         )}
       </div>

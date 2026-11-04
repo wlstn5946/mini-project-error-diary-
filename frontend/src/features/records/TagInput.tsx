@@ -1,11 +1,12 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
 import { fetchTags, TAG_NAME_MAX, TAG_NAME_TOO_LONG, type Tag } from './tagsApi'
+import { normalizeTag, recommendTags, tagKey } from './tagRecommend'
 import './TagInput.css'
 
 // 에러 입력 시 태그 지정 (R-001, D-006). 시안 에러해결창_예시.png ①의 "태그 (최대 5개)" 부분.
 // 새 태그는 여기서 저장하지 않고 이름만 부모에게 넘긴다. 에러를 저장할 때 함께 만든다. (D-020)
-// 일반 추천 태그(+패키지 등)는 Later 후보라 만들지 않는다. (D-023)
-// 다만 비슷한 기록이 찾아졌을 때는 그 기록들의 태그를 추천 칩으로 보여준다. 누르기 전에는 태그가 붙지 않는다. (D-081)
+// 추천 태그: 비슷한 기록의 태그(D-081)와, 에러 메시지에서 규칙으로 찾은 내 태그(D-120)를 추천 칩으로 보여준다.
+// 새 태그 이름은 만들어 추천하지 않고, 누르기 전에는 태그가 붙지 않는다. 계산은 tagRecommend.ts.
 
 // 에러 저장(A-002) 요청에 그대로 쓸 모양: 기존 태그는 ID, 새 태그는 이름
 export type TagsValue = {
@@ -21,6 +22,8 @@ type Props = {
   initialTags?: { id: number; name: string }[]
   // 비슷한 기록의 태그. 추천 칩으로만 보여주고 이미 고른 태그는 뺀다 (D-081)
   suggestedTags?: { id: number; name: string }[]
+  // 추천에 쓸 에러 메시지(입력이 멈춘 뒤의 값). 없으면 비슷한 기록의 태그만 추천한다 (D-120)
+  errorText?: string
 }
 
 type Status = 'loading' | 'ready' | 'error'
@@ -32,18 +35,10 @@ type Suggestion = { tag: Tag; alias: string | null }
 
 const MAX_TAGS = 5 // D-022
 const MAX_SUGGESTIONS = 8
+const MAX_RECOMMENDED = 5 // D-120
 
-// 앞뒤 공백 → 앞의 # → 다시 앞뒤 공백 순서로 지운다. (D-019)
-function normalizeTag(raw: string) {
-  return raw.trim().replace(/^#+/, '').trim()
-}
 
-// 같은 태그 판단용 값. 서버의 name_key와 같은 규칙이다. (D-019)
-function tagKey(name: string) {
-  return normalizeTag(name).toLowerCase()
-}
-
-function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [] }: Props) {
+function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [], errorText = '' }: Props) {
   const [status, setStatus] = useState<Status>('loading')
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [reloadKey, setReloadKey] = useState(0)
@@ -84,11 +79,18 @@ function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [] 
           .slice(0, MAX_SUGGESTIONS)
       : []
 
-  // 같은 태그는 한 번만, 이미 고른 태그는 뺀다. 최대 개수에 이미 찼으면 보여주지 않는다
+  // 같은 태그는 한 번만, 이미 고른 태그는 뺀다. 최대 개수에 이미 찼으면 보여주지 않는다.
+  // 태그 목록을 못 불러왔으면 비슷한 기록의 태그만 쓴다. (D-120)
   const recommended =
     disabled || chips.length >= MAX_TAGS
       ? []
-      : [...new Map(suggestedTags.map((t) => [tagKey(t.name), t])).values()].filter((t) => !chosenKeys.has(tagKey(t.name)))
+      : recommendTags({
+          message: errorText,
+          allTags: status === 'error' ? [] : allTags,
+          similarTags: suggestedTags,
+          chosenKeys,
+          max: MAX_RECOMMENDED,
+        })
 
   function update(next: Chip[]) {
     setChips(next)
@@ -203,10 +205,16 @@ function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [] 
       </div>
 
       {recommended.length > 0 && (
-        <div className="tag-recommend" role="group" aria-label="비슷한 기록의 태그">
-          <span className="hint">비슷한 기록의 태그</span>
-          {recommended.map((t) => (
-            <button key={t.id} type="button" className="tag-recommend-chip" onClick={() => addTag(t.name)}>
+        <div className="tag-recommend" role="group" aria-label="추천 태그">
+          <span className="hint">추천 태그</span>
+          {recommended.map(({ tag: t, reason }) => (
+            <button
+              key={t.id}
+              type="button"
+              className="tag-recommend-chip"
+              title={reason}
+              onClick={() => addTag(t.name)}
+            >
               + {t.name}
             </button>
           ))}
