@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.error_text import key_line
+from app.error_text import key_line, mask_variable_parts
 from app.models import ErrorRecord, Series, Tag, TagAlias, User
 from app.repositories import attempts as attempts_repo
 from app.repositories import errors as errors_repo
@@ -185,6 +185,11 @@ def _normalize_for_compare(text: str) -> str:
     return " ".join(text.lower().split())
 
 
+def _normalize_masked(text: str) -> str:
+    """비교용: 경로·줄 번호·주소를 자리표시자로 바꾼 뒤 공백·대소문자를 정리한다. 저장·표시에는 쓰지 않는다. (D-122)"""
+    return _normalize_for_compare(mask_variable_parts(text))
+
+
 def _similarity_percent(query: str, other: str) -> int | None:
     """difflib 문자 유사도를 0~100%로 바꾼다(반올림). MIN_SIMILARITY 미만이면 None. (D-040)"""
     matcher = SequenceMatcher(None, query, other)
@@ -195,27 +200,28 @@ def _similarity_percent(query: str, other: str) -> int | None:
     return percent if percent >= MIN_SIMILARITY else None
 
 
-# A-003 비슷한 기존 기록 검색 (R-002, D-040, D-121). 해결된 기록만, 뿌리 기준으로 묶어 카드 1장, 유사도 높은 순. 저장하거나 바꾸지 않는다.
+# A-003 비슷한 기존 기록 검색 (R-002, D-040, D-121, D-122). 해결된 기록만, 뿌리 기준으로 묶어 카드 1장, 유사도 높은 순. 저장하거나 바꾸지 않는다.
 @router.post("/errors/search", response_model=list[SimilarErrorResponse])
 def search_similar_errors(
     body: SimilarSearchRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> list[SimilarErrorResponse]:
-    query = _normalize_for_compare(body.error_message)
-    if not query:
+    if not _normalize_for_compare(body.error_message):
         raise _invalid("에러 메시지를 입력해 주세요.")
+    # 비교 전에 경로·줄 번호·메모리 주소를 자리표시자로 바꾼다. 핵심 줄은 원문에서 찾고 그 줄에 마스킹한다. (D-122)
+    query = _normalize_masked(body.error_message)
 
     # 전체 비교와 핵심 줄 비교(D-117) 중 높은 값을 유사도로 쓴다. 핵심 줄이 비어 있으면 핵심 줄 비교는 하지 않는다. (D-118)
-    query_key = _normalize_for_compare(key_line(body.error_message)[0])
+    query_key = _normalize_masked(key_line(body.error_message)[0])
 
     # 해결된 기록 전부(재사용 기록 포함)를 비교하고, 뿌리(reused_from_id or id) 기준으로 묶는다. (D-121)
     candidates = errors_repo.list_resolved_errors(db, user_id=user.id)
     by_id = {error.id: error for error in candidates}
     groups: dict[int, list[tuple[int, Literal["full", "key_line"], ErrorRecord]]] = {}
     for error in candidates:
-        percent = _similarity_percent(query, _normalize_for_compare(error.error_message))
+        percent = _similarity_percent(query, _normalize_masked(error.error_message))
         matched_by: Literal["full", "key_line"] = "full"
         if query_key:
-            other_key = _normalize_for_compare(key_line(error.error_message)[0])
+            other_key = _normalize_masked(key_line(error.error_message)[0])
             if other_key:
                 key_percent = _similarity_percent(query_key, other_key)
                 if key_percent is not None and (percent is None or key_percent > percent):
