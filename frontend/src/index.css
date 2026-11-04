@@ -262,7 +262,7 @@ a.stat.active {
   background: none;
   font: inherit;
   color: var(--text-sub);
-  cursor: pointer;
+  cursor: default;
 }
 
 .tab[aria-selected='true'] {
