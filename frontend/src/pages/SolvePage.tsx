@@ -116,7 +116,11 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
   const searchPending = !locked && message !== '' && similar?.query !== message
   const matches = searchShown?.items ?? []
 
+  // 뒤로 가기로 흐름을 버린 뒤 늦게 도착한 AI 응답을 버리기 위한 번호
+  const suggestSeq = useRef(0)
+
   async function suggest(errorText: string, history: AttemptInput[]) {
+    const seq = ++suggestSeq.current
     setLoading(true)
     setResult(null)
     // 해결된 시도는 다음 방법을 묻지 않으므로 실패·일부 해결만 보낸다
@@ -125,8 +129,24 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
       a.result === 'solved' ? [] : [{ action: a.action, result: a.result }],
     )
     // requestSuggestion은 실패해도 예외 없이 unavailable을 돌려준다
-    setResult(await requestSuggestion(errorText, previous))
+    const suggestion = await requestSuggestion(errorText, previous)
+    if (seq !== suggestSeq.current) return
+    setResult(suggestion)
     setLoading(false)
+  }
+
+  // AI 제안 탭의 "← 에러 입력으로 돌아가기": 입력 잠금을 풀고 에러 입력 탭으로 간다.
+  // 시도 기록이 이전 에러 메시지에 대한 것이므로 모아 둔 시도와 AI 제안은 버린다 (아직 저장 전이라 서버에는 영향이 없다)
+  function backToInput() {
+    if (saved || saving || busy.current) return
+    suggestSeq.current++
+    setLocked(false)
+    setLoading(false)
+    setResult(null)
+    setCollected([])
+    setSaveError(null)
+    setApplyError(null)
+    setTab('input')
   }
 
   // 비슷한 기록이 0건이라 바로 AI 탭으로 들어왔다: 들어올 때 한 번만 A-005를 부른다 (StrictMode에서도 한 번)
@@ -285,21 +305,20 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
 
       <div className="tabs" role="tablist">
         {stateTabs.map((t) => (
-          <button
+          // 탭은 지금 어느 단계인지만 보여 준다. 단계 이동은 각 단계의 버튼으로만 한다.
+          <div
             key={t.tab}
-            type="button"
             role="tab"
             id={`tab-${t.tab}`}
             aria-selected={tab === t.tab}
             aria-controls={`panel-${t.tab}`}
             className="tab"
-            onClick={() => setTab(t.tab)}
           >
             {t.label}
             {t.tab === 'analysis' && loading && <span className="tab-badge">분석 중…</span>}
             {t.tab === 'analysis' && !loading && result && !saved && <span className="tab-badge done">완료</span>}
             {t.tab === 'result' && saved && <span className="tab-badge done">저장됨</span>}
-          </button>
+          </div>
         ))}
       </div>
 
@@ -398,6 +417,11 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
 
       {tab === 'analysis' && (
         <section role="tabpanel" id="panel-analysis" aria-labelledby="tab-analysis">
+          {!saved && (
+            <button type="button" className="btn-secondary" disabled={saving} onClick={backToInput}>
+              ← 에러 입력으로 돌아가기
+            </button>
+          )}
           {!locked && <p className="empty">아직 AI에게 묻지 않았어요. &quot;에러 입력&quot; 탭에서 에러를 입력해 주세요.</p>}
 
           {locked && <pre className="code-view">{errorMessage}</pre>}
