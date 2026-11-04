@@ -2,6 +2,8 @@
 
 count_by_error_ids(), list_attempts()는 팀원 1이 내 기록(A-008, A-009)용으로 추가했다. (D-038)
 delete_by_error_id()는 팀원 1이 기록 삭제(A-011)용으로 추가했다. (D-045)
+
+attempts에는 user_id가 없다. 이 파일의 함수를 부르기 전에 호출하는 쪽이 errors_repo.get_owned_error()로 에러 소유를 확인해야 한다. (D-086, D-105)
 """
 
 from sqlalchemy import delete, func, select

@@ -4,7 +4,8 @@
 
 ## 1. 프로젝트 소개
 - 에러 메시지를 입력하면 이전 해결 기록을 먼저 찾아 보여주고, 없으면 Gemini가 해결 방법을 제안하는 에러 해결 기록 앱 (상세: PRD 1절)
-- 기술 스택: FastAPI + React(Vite, TypeScript) + PostgreSQL(로컬, 이후 Supabase) + Gemini API (D-001, D-057, D-058)
+- 회원가입으로 여러 계정을 만들고, 계정마다 자기 기록만 본다 (D-082)
+- 기술 스택: FastAPI + React(Vite, TypeScript) + PostgreSQL(로컬, 배포 직전 Supabase) + Gemini API (D-001, D-057, D-058, D-083)
 
 ## 2. 문서 지도
 | 문서 | 역할 | 경로 |
@@ -16,7 +17,7 @@
 | DATA-MODEL | 테이블과 필드 규칙 | docs/DATA-MODEL/DATA-MODEL_N.md |
 | README | 실행 방법, 개발 환경, 소개 | [결정 필요] |
 | PROMPTS | AI 프롬프트, 응답 JSON 형식, 수정 이력 | docs/PROMPTS/PROMPTS_N.md |
-| SCENARIO-REVIEW | 테스트 체크리스트, 데모 시나리오 | [결정 필요] |
+| SCENARIO-REVIEW | 테스트 체크리스트, 데모 시나리오 | docs/SCENARIO-REVIEW/SCENARIO-REVIEW_N.md |
 | FEATURE-PROPOSAL | Later 기능 제안 | [결정 필요] |
 | IMPACT-ANALYSIS | 새 기능이 기존 코드에 주는 영향 | [결정 필요] |
 
@@ -48,7 +49,7 @@
 |------|-----------|---------|-----------|
 | 팀원 1 (찾기·정리) | 에러 등록, 기존 기록 검색, 내 기록, 에러 일기 상세 (D-031) | R-001, R-002, R-005 | 백엔드: `backend/app/routers/records.py`, `backend/app/repositories/series.py`, `backend/app/repositories/tags.py`, `backend/app/repositories/errors.py` / 프론트: `frontend/src/features/records/`, `frontend/src/pages/RecordsPage.tsx`, `frontend/src/pages/RecordDetailPage.tsx` |
 | 팀원 2 (AI로 해결) | Gemini 연동, AI 제안, 시도 기록, 해결 처리 | R-003, R-004 | 백엔드: `backend/app/routers/solve.py`, `backend/app/repositories/attempts.py` / 프론트: `frontend/src/features/solve/` |
-| 공용 | 공용 파일, 공통 컴포넌트 | - | 백엔드: `backend/app/main.py`, `backend/app/config.py`, `backend/app/db.py`, `backend/app/models.py`, `backend/app/routers/health.py`, `backend/requirements.txt`, `.gitignore` / 프론트: `frontend/src/components/`, `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/main.tsx`, `frontend/src/index.css`, `frontend/vite.config.ts`, `frontend/src/pages/SolvePage.tsx`, `frontend/src/pages/NotFoundPage.tsx` |
+| 공용 | 공용 파일, 공통 컴포넌트 | - | 백엔드: `backend/app/main.py`, `backend/app/config.py`, `backend/app/db.py`, `backend/app/models.py`, `backend/app/routers/health.py`, `backend/app/routers/auth.py`(D-098), `backend/app/security.py`, `backend/app/repositories/users.py`, `backend/app/repositories/sessions.py`, `backend/requirements.txt`, `.gitignore` / 프론트: `frontend/src/components/`, `frontend/src/api.ts`, `frontend/src/App.tsx`, `frontend/src/main.tsx`, `frontend/src/index.css`, `frontend/vite.config.ts`, `frontend/src/pages/SolvePage.tsx`, `frontend/src/pages/NotFoundPage.tsx`, `frontend/src/features/auth/`(D-104), `frontend/src/pages/LoginPage.tsx`, `frontend/src/pages/RegisterPage.tsx` |
 
 - 프론트 폴더 구분은 D-012, `frontend/src/pages/`의 화면별 담당은 D-039를 따른다.
 - SQL은 라우터에 쓰지 않고 `backend/app/repositories/<테이블>.py`에만 둔다. (D-016)
@@ -90,6 +91,7 @@
 ## 9. 하지 말 것
 - 요청하지 않은 기능을 추가하지 않는다.
 - Later 기능(복습 퀴즈, D-004)을 구현하지 않는다.
-- PRD "안 만들 것"(로그인, 학습 기록) 기능을 만들지 않는다.
+- PRD "안 만들 것"(학습 기록) 기능을 만들지 않는다.
+- 로그인의 Later 항목(이메일, 비밀번호 찾기, 비밀번호 복잡도 규칙, 별도 CSRF 토큰, D-088, 로그인 시도 횟수 제한, D-095)을 구현하지 않는다.
 - [결정 필요] 항목을 임의로 결정하지 않는다. 선택지 2~3개와 각각의 영향을 제시하고 질문한다.
 - 문서에 없는 폴더 구조·명령·경로를 지어내지 않는다.

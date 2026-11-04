@@ -4,6 +4,7 @@
 이번 범위는 A-002(POST /errors), A-003(POST /errors/search), A-004(GET /series, GET /tags), A-008(GET /errors), A-009(GET /errors/{id}), A-010(PATCH /errors/{id}), A-011(DELETE /errors/{id}), A-012(PATCH·DELETE /tags/{id}), A-013(PATCH·DELETE /series/{id}), A-014(PUT /series/{id}/order), A-015(POST /series)를 구현한다.
 A-003(/errors/search)은 A-009(/errors/{error_id})보다 위에 선언한다. 먼저 선언한 경로가 먼저 매칭되기 때문이다.
 SQL은 이 파일에 쓰지 않고 backend/app/repositories/에만 둔다. (D-016)
+계정별 분리 (D-086, D-087, D-105): 모든 핸들러가 현재 사용자를 받아 repository에 user_id로 넘긴다. 남의 리소스는 없는 것과 똑같이 처리한다.
 """
 
 from difflib import SequenceMatcher
@@ -15,11 +16,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import ErrorRecord, Series, Tag
+from app.models import ErrorRecord, Series, Tag, User
 from app.repositories import attempts as attempts_repo
 from app.repositories import errors as errors_repo
 from app.repositories import series as series_repo
 from app.repositories import tags as tags_repo
+from app.security import get_current_user
 
 router = APIRouter(tags=["records"])
 
@@ -48,9 +50,9 @@ def _series_response(series: Series, error_count: int) -> SeriesResponse:
 
 # A-004 시리즈 목록 (R-001, D-006). 최근 만든 순, 없으면 빈 배열.
 @router.get("/series", response_model=list[SeriesResponse])
-def list_series(db: Session = Depends(get_db)) -> list[SeriesResponse]:
-    counts = errors_repo.count_errors_by_series(db)
-    return [_series_response(series, counts.get(series.id, 0)) for series in series_repo.list_series(db)]
+def list_series(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[SeriesResponse]:
+    counts = errors_repo.count_errors_by_series(db, user_id=user.id)
+    return [_series_response(series, counts.get(series.id, 0)) for series in series_repo.list_series(db, user_id=user.id)]
 
 
 class TagResponse(BaseModel):
@@ -69,9 +71,9 @@ def _tag_response(tag: Tag, error_count: int) -> TagResponse:
 
 # A-004 태그 목록 (R-001, D-021). 자동 완성용 전체 목록, 이름순, 없으면 빈 배열.
 @router.get("/tags", response_model=list[TagResponse])
-def list_tags(db: Session = Depends(get_db)) -> list[TagResponse]:
-    counts = errors_repo.count_errors_by_tag(db)
-    return [_tag_response(tag, counts.get(tag.id, 0)) for tag in tags_repo.list_tags(db)]
+def list_tags(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[TagResponse]:
+    counts = errors_repo.count_errors_by_tag(db, user_id=user.id)
+    return [_tag_response(tag, counts.get(tag.id, 0)) for tag in tags_repo.list_tags(db, user_id=user.id)]
 
 
 class AttemptInput(BaseModel):
@@ -161,13 +163,15 @@ def _similarity_percent(query: str, other: str) -> int | None:
 
 # A-003 비슷한 기존 기록 검색 (R-002, D-040). 해결된 기록만, 유사도 높은 순. 저장하거나 바꾸지 않는다.
 @router.post("/errors/search", response_model=list[SimilarErrorResponse])
-def search_similar_errors(body: SimilarSearchRequest, db: Session = Depends(get_db)) -> list[SimilarErrorResponse]:
+def search_similar_errors(
+    body: SimilarSearchRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> list[SimilarErrorResponse]:
     query = _normalize_for_compare(body.error_message)
     if not query:
         raise _invalid("에러 메시지를 입력해 주세요.")
 
     matched: list[tuple[int, ErrorRecord]] = []
-    for error in errors_repo.list_resolved_errors(db):
+    for error in errors_repo.list_resolved_errors(db, user_id=user.id):
         percent = _similarity_percent(query, _normalize_for_compare(error.error_message))
         if percent is not None:
             matched.append((percent, error))
@@ -175,8 +179,8 @@ def search_similar_errors(body: SimilarSearchRequest, db: Session = Depends(get_
     matched.sort(key=lambda item: (-item[0], -item[1].id))
 
     error_ids = [error.id for _, error in matched]
-    tags_by_error = errors_repo.get_tags_by_error_ids(db, error_ids)
-    attempt_counts = attempts_repo.count_by_error_ids(db, error_ids)
+    tags_by_error = errors_repo.get_tags_by_error_ids(db, error_ids, user_id=user.id)
+    attempt_counts = attempts_repo.count_by_error_ids(db, error_ids)  # error_ids는 위에서 내 기록으로만 모았다
     return [
         SimilarErrorResponse(
             id=error.id,
@@ -191,10 +195,10 @@ def search_similar_errors(body: SimilarSearchRequest, db: Session = Depends(get_
     ]
 
 
-def _resolve_tags(db: Session, tag_ids: list[int], new_tag_names: list[str]) -> tuple[list[Tag], list[str]]:
+def _resolve_tags(db: Session, user_id: int, tag_ids: list[int], new_tag_names: list[str]) -> tuple[list[Tag], list[str]]:
     """기존 태그와 새로 만들 태그 이름을 나눈다. 새 이름이 기존 태그와 같으면 기존 태그로 합친다. (D-019)"""
     unique_ids = list(dict.fromkeys(tag_ids))
-    by_id = {tag.id: tag for tag in tags_repo.get_tags_by_ids(db, unique_ids)}
+    by_id = {tag.id: tag for tag in tags_repo.get_tags_by_ids(db, unique_ids, user_id=user_id)}
     if len(by_id) != len(unique_ids):
         raise _invalid("없는 태그 ID가 있어요.")
     chosen = [by_id[tag_id] for tag_id in unique_ids]
@@ -207,7 +211,7 @@ def _resolve_tags(db: Session, tag_ids: list[int], new_tag_names: list[str]) -> 
         if name and key not in chosen_keys and key not in new_names:
             new_names[key] = name
 
-    found = tags_repo.get_tags_by_keys(db, list(new_names))
+    found = tags_repo.get_tags_by_keys(db, list(new_names), user_id=user_id)
     chosen += [found[key] for key in new_names if key in found]
     to_create = [name for key, name in new_names.items() if key not in found]
     if len(chosen) + len(to_create) > MAX_TAGS:
@@ -219,7 +223,9 @@ def _resolve_tags(db: Session, tag_ids: list[int], new_tag_names: list[str]) -> 
 # 새 시리즈·새 태그도 이때 함께 만든다(D-011, D-020). 에러·태그 연결·시도·해결 처리까지 모두 한 트랜잭션이다.
 # 마지막 시도가 해결됨이면 resolved, 아니면 unresolved다. (D-028, D-029)
 @router.post("/errors", response_model=ErrorCreatedResponse, status_code=201)
-def create_error(body: ErrorCreateRequest, db: Session = Depends(get_db)) -> ErrorCreatedResponse:
+def create_error(
+    body: ErrorCreateRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> ErrorCreatedResponse:
     error_message = body.error_message.strip()
     if not error_message:
         raise _invalid("에러 메시지를 입력해 주세요.")
@@ -239,7 +245,7 @@ def create_error(body: ErrorCreateRequest, db: Session = Depends(get_db)) -> Err
     reused_from_id = None
     if body.reused_from_id is not None:
         try:
-            reused_from_id = errors_repo.get_reuse_root_id(db, body.reused_from_id)
+            reused_from_id = errors_repo.get_reuse_root_id(db, body.reused_from_id, user_id=user.id)
         except ValueError as exc:
             raise _invalid(str(exc))
 
@@ -249,28 +255,34 @@ def create_error(body: ErrorCreateRequest, db: Session = Depends(get_db)) -> Err
     series = None
     new_series_name = None
     if body.series_id is not None:
-        series = series_repo.get_series(db, body.series_id)
+        series = series_repo.get_owned_series(db, user_id=user.id, series_id=body.series_id)
         if series is None:
-            raise _invalid("없는 시리즈예요.")
+            raise _invalid("없는 시리즈예요.")  # 남의 시리즈도 같은 응답이다 (D-105)
     elif body.new_series_name is not None:
         new_series_name = body.new_series_name.strip()
         if not new_series_name:
             raise _invalid("새 시리즈 이름이 비어 있어요.")
-        # 같은 이름(공백·대소문자 무시)이 이미 있으면 그 시리즈를 쓴다. (D-017)
-        series = series_repo.find_series_by_name(db, new_series_name)
-    tags, new_tag_names = _resolve_tags(db, body.tag_ids, body.new_tag_names)
+        # 내 시리즈 중 같은 이름(공백·대소문자 무시)이 이미 있으면 그 시리즈를 쓴다. (D-017)
+        series = series_repo.find_series_by_name(db, new_series_name, user_id=user.id)
+    tags, new_tag_names = _resolve_tags(db, user.id, body.tag_ids, body.new_tag_names)
 
     if series is None and new_series_name:
-        series = series_repo.create_series(db, new_series_name)
-    tags += [tags_repo.create_tag(db, name) for name in new_tag_names]
+        series = series_repo.create_series(db, new_series_name, user_id=user.id)
+    tags += [tags_repo.create_tag(db, name, user_id=user.id) for name in new_tag_names]
     error = errors_repo.create_error(
-        db, error_message, situation, series.id if series else None, [tag.id for tag in tags], reused_from_id
+        db,
+        error_message,
+        situation,
+        series.id if series else None,
+        [tag.id for tag in tags],
+        reused_from_id,
+        user_id=user.id,
     )
     saved = [attempts_repo.create_attempt(db, error.id, seq, action, result) for seq, (action, result) in enumerate(attempts, 1)]
     if solved:
-        errors_repo.mark_resolved(db, error, summary)  # 팀원 2 함수 그대로 (D-030)
+        errors_repo.mark_resolved(db, error, summary, user_id=user.id)  # 팀원 2 함수 그대로 (D-030)
     else:
-        errors_repo.set_summary(db, error, summary)  # 미해결에도 한 줄 정리는 선택으로 저장한다
+        errors_repo.set_summary(db, error, summary, user_id=user.id)  # 미해결에도 한 줄 정리는 선택으로 저장한다
     db.commit()
 
     return ErrorCreatedResponse(
@@ -326,13 +338,15 @@ class ErrorDetailResponse(ErrorListItem):
     reuses: list[ReuseItem]
 
 
-def _list_items(db: Session, errors: list[ErrorRecord]) -> list[ErrorListItem]:
+def _list_items(db: Session, user_id: int, errors: list[ErrorRecord]) -> list[ErrorListItem]:
     """시리즈·태그·시도 수를 에러마다 따로 조회하지 않고 한 번씩 모아서 가져온다 (N+1 조회 방지)."""
     error_ids = [error.id for error in errors]
-    series = series_repo.get_series_by_ids(db, {error.series_id for error in errors if error.series_id is not None})
-    tags = errors_repo.get_tags_by_error_ids(db, error_ids)
+    series = series_repo.get_series_by_ids(
+        db, {error.series_id for error in errors if error.series_id is not None}, user_id=user_id
+    )
+    tags = errors_repo.get_tags_by_error_ids(db, error_ids, user_id=user_id)
     counts = attempts_repo.count_by_error_ids(db, error_ids)
-    reuse_counts = errors_repo.count_reuses_by_ids(db, error_ids)
+    reuse_counts = errors_repo.count_reuses_by_ids(db, error_ids, user_id=user_id)
     cutoff = errors_repo.stale_cutoff()
     return [
         ErrorListItem(
@@ -365,10 +379,11 @@ def list_errors(
     # true이면 오래된 기록(미해결 + 등록 14일 이상)만. 다른 필터와 함께 쓰면 모두 만족하는 것만 준다. (D-078)
     stale: bool = False,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> list[ErrorListItem]:
     keyword = (q or "").strip() or None
-    errors = errors_repo.list_errors(db, status, list(dict.fromkeys(tag_id)), keyword, series_id, stale)
-    return _list_items(db, errors)
+    errors = errors_repo.list_errors(db, status, list(dict.fromkeys(tag_id)), keyword, series_id, stale, user_id=user.id)
+    return _list_items(db, user.id, errors)
 
 
 class ErrorStatsResponse(BaseModel):
@@ -383,32 +398,34 @@ class ErrorStatsResponse(BaseModel):
 # A-017 기록 통계 (R-005, D-074). 사이드바 대시보드의 에러 기록·해결·미해결·재사용 해결 개수.
 # 고정 경로라서 A-009(/errors/{error_id})보다 위에 선언한다. 먼저 선언한 경로가 먼저 매칭되기 때문이다.
 @router.get("/errors/stats", response_model=ErrorStatsResponse)
-def get_error_stats(db: Session = Depends(get_db)) -> ErrorStatsResponse:
-    counts = errors_repo.count_by_status(db)
+def get_error_stats(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> ErrorStatsResponse:
+    counts = errors_repo.count_by_status(db, user_id=user.id)
     return ErrorStatsResponse(
         total=counts["resolved"] + counts["unresolved"],
         resolved=counts["resolved"],
         unresolved=counts["unresolved"],
-        reused_resolved=errors_repo.count_reused_resolved(db),
-        stale_unresolved=errors_repo.count_stale_unresolved(db),
+        reused_resolved=errors_repo.count_reused_resolved(db, user_id=user.id),
+        stale_unresolved=errors_repo.count_stale_unresolved(db, user_id=user.id),
     )
 
 
 # A-009 에러 일기 상세 (R-004, R-005, D-031). 시도는 시도 번호 순서.
 @router.get("/errors/{error_id}", response_model=ErrorDetailResponse)
-def get_error_detail(error_id: int, db: Session = Depends(get_db)) -> ErrorDetailResponse:
-    error = errors_repo.get_error(db, error_id)
+def get_error_detail(
+    error_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> ErrorDetailResponse:
+    error = errors_repo.get_owned_error(db, user_id=user.id, error_id=error_id)
     if error is None:
         raise HTTPException(status_code=404, detail="에러 기록을 찾을 수 없어요.")
-    item = _list_items(db, [error])[0]
-    children = errors_repo.list_reuses(db, error.id)
-    child_items = {child.id: child_item for child, child_item in zip(children, _list_items(db, children))}
+    item = _list_items(db, user.id, [error])[0]
+    children = errors_repo.list_reuses(db, error.id, user_id=user.id)
+    child_items = {child.id: child_item for child, child_item in zip(children, _list_items(db, user.id, children))}
     return ErrorDetailResponse(
         **item.model_dump(),
         situation=error.situation,
         summary=error.summary,
         ai_feedback=error.ai_feedback,
-        attempts=[AttemptItem.model_validate(attempt) for attempt in attempts_repo.list_attempts(db, error.id)],
+        attempts=[AttemptItem.model_validate(attempt) for attempt in attempts_repo.list_attempts(db, error.id)],  # 위에서 에러 소유를 확인했다
         reuses=[
             ReuseItem(
                 id=child.id,
@@ -434,8 +451,10 @@ class ErrorUpdateRequest(BaseModel):
 
 # A-010 기록 수정 (R-005, D-047, D-048). 태그·시리즈·상황만 고친다. 먼저 모두 검사하고 한 트랜잭션으로 바꾼다.
 @router.patch("/errors/{error_id}", response_model=ErrorDetailResponse)
-def update_error(error_id: int, body: ErrorUpdateRequest, db: Session = Depends(get_db)) -> ErrorDetailResponse:
-    error = errors_repo.get_error(db, error_id)
+def update_error(
+    error_id: int, body: ErrorUpdateRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> ErrorDetailResponse:
+    error = errors_repo.get_owned_error(db, user_id=user.id, error_id=error_id)
     if error is None:
         raise HTTPException(status_code=404, detail="에러 기록을 찾을 수 없어요.")
     sent = body.model_fields_set
@@ -449,24 +468,24 @@ def update_error(error_id: int, body: ErrorUpdateRequest, db: Session = Depends(
     series = None
     new_series_name = None
     if body.series_id is not None:
-        series = series_repo.get_series(db, body.series_id)
+        series = series_repo.get_owned_series(db, user_id=user.id, series_id=body.series_id)
         if series is None:
             raise _invalid("없는 시리즈예요.")
     elif body.new_series_name is not None:
         new_series_name = body.new_series_name.strip()
         if not new_series_name:
             raise _invalid("새 시리즈 이름이 비어 있어요.")
-        series = series_repo.find_series_by_name(db, new_series_name)
+        series = series_repo.find_series_by_name(db, new_series_name, user_id=user.id)
 
     tags = None
     new_tag_names: list[str] = []
     if "tag_ids" in sent or "new_tag_names" in sent:
-        tags, new_tag_names = _resolve_tags(db, body.tag_ids or [], body.new_tag_names or [])
+        tags, new_tag_names = _resolve_tags(db, user.id, body.tag_ids or [], body.new_tag_names or [])
 
     if series is None and new_series_name:
-        series = series_repo.create_series(db, new_series_name)
+        series = series_repo.create_series(db, new_series_name, user_id=user.id)
     if tags is not None:
-        tags += [tags_repo.create_tag(db, name) for name in new_tag_names]
+        tags += [tags_repo.create_tag(db, name, user_id=user.id) for name in new_tag_names]
     errors_repo.update_error(
         db,
         error,
@@ -475,18 +494,19 @@ def update_error(error_id: int, body: ErrorUpdateRequest, db: Session = Depends(
         set_series=set_series,
         series_id=series.id if series else None,
         tag_ids=[tag.id for tag in tags] if tags is not None else None,
+        user_id=user.id,
     )
     db.commit()
-    return get_error_detail(error_id, db)
+    return get_error_detail(error_id, db, user)
 
 
 # A-011 기록 삭제 (R-005, D-043, D-044). 시도·태그 연결까지 한 트랜잭션으로 지운다. 쓰이지 않게 된 태그·시리즈는 남긴다. (D-046)
 @router.delete("/errors/{error_id}", status_code=204)
-def delete_error(error_id: int, db: Session = Depends(get_db)) -> None:
-    error = errors_repo.get_error(db, error_id)
+def delete_error(error_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> None:
+    error = errors_repo.get_owned_error(db, user_id=user.id, error_id=error_id)
     if error is None:
         raise HTTPException(status_code=404, detail="에러 기록을 찾을 수 없어요.")
-    errors_repo.delete_error(db, error)
+    errors_repo.delete_error(db, error, user_id=user.id)
     db.commit()
 
 
@@ -499,32 +519,34 @@ class TagRenameRequest(BaseModel):
 
 # A-012 태그 이름 변경 (R-005, D-019, D-049). 같은 이름(정규화 후 같은 name_key)이 다른 태그에 있으면 409.
 @router.patch("/tags/{tag_id}", response_model=TagResponse)
-def rename_tag(tag_id: int, body: TagRenameRequest, db: Session = Depends(get_db)) -> TagResponse:
-    tag = tags_repo.get_tag(db, tag_id)
+def rename_tag(
+    tag_id: int, body: TagRenameRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> TagResponse:
+    tag = tags_repo.get_owned_tag(db, user_id=user.id, tag_id=tag_id)
     if tag is None:
         raise HTTPException(status_code=404, detail="태그를 찾을 수 없어요.")
     name = tags_repo.normalize_tag_name(body.name)
     if not name:
         raise _invalid("태그 이름을 입력해 주세요.")
-    if tags_repo.find_other_tag_by_key(db, name.lower(), tag.id) is not None:
+    if tags_repo.find_other_tag_by_key(db, name.lower(), tag.id, user_id=user.id) is not None:
         raise HTTPException(status_code=409, detail=NAME_TAKEN)
-    tags_repo.rename_tag(db, tag, name)
+    tags_repo.rename_tag(db, tag, name, user_id=user.id)
     try:
         db.commit()
     except IntegrityError:
         # 확인한 뒤 다른 요청이 같은 이름을 먼저 저장한 경우(name_key UNIQUE)
         db.rollback()
         raise HTTPException(status_code=409, detail=NAME_TAKEN)
-    return _tag_response(tag, errors_repo.count_errors_by_tag(db).get(tag.id, 0))
+    return _tag_response(tag, errors_repo.count_errors_by_tag(db, user_id=user.id).get(tag.id, 0))
 
 
 # A-012 태그 삭제 (R-005, D-050). 쓰이는 태그도 지울 수 있고, 에러 연결만 지워진다. 에러는 남는다.
 @router.delete("/tags/{tag_id}", status_code=204)
-def delete_tag(tag_id: int, db: Session = Depends(get_db)) -> None:
-    tag = tags_repo.get_tag(db, tag_id)
+def delete_tag(tag_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> None:
+    tag = tags_repo.get_owned_tag(db, user_id=user.id, tag_id=tag_id)
     if tag is None:
         raise HTTPException(status_code=404, detail="태그를 찾을 수 없어요.")
-    tags_repo.delete_tag(db, tag)
+    tags_repo.delete_tag(db, tag, user_id=user.id)
     db.commit()
 
 
@@ -535,13 +557,15 @@ class SeriesCreateRequest(BaseModel):
 
 # A-015 시리즈 새로 만들기 (R-005, D-017, D-049, D-054, D-061). 같은 이름(공백 제외·대소문자 무시)이면 409.
 @router.post("/series", response_model=SeriesResponse, status_code=201)
-def create_series(body: SeriesCreateRequest, db: Session = Depends(get_db)) -> SeriesResponse:
+def create_series(
+    body: SeriesCreateRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> SeriesResponse:
     name = body.name.strip()
     if not name:
         raise _invalid("시리즈 이름을 입력해 주세요.")
-    if series_repo.find_series_by_name(db, name) is not None:
+    if series_repo.find_series_by_name(db, name, user_id=user.id) is not None:
         raise HTTPException(status_code=409, detail=NAME_TAKEN)
-    series = series_repo.create_series(db, name, (body.description or "").strip() or None)
+    series = series_repo.create_series(db, name, (body.description or "").strip() or None, user_id=user.id)
     try:
         db.commit()
     except IntegrityError:
@@ -558,8 +582,10 @@ class SeriesUpdateRequest(BaseModel):
 
 # A-013 시리즈 이름·설명 변경 (R-005, D-017, D-049, D-054)
 @router.patch("/series/{series_id}", response_model=SeriesResponse)
-def update_series(series_id: int, body: SeriesUpdateRequest, db: Session = Depends(get_db)) -> SeriesResponse:
-    series = series_repo.get_series(db, series_id)
+def update_series(
+    series_id: int, body: SeriesUpdateRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> SeriesResponse:
+    series = series_repo.get_owned_series(db, user_id=user.id, series_id=series_id)
     if series is None:
         raise HTTPException(status_code=404, detail="시리즈를 찾을 수 없어요.")
     sent = body.model_fields_set
@@ -567,26 +593,26 @@ def update_series(series_id: int, body: SeriesUpdateRequest, db: Session = Depen
         name = (body.name or "").strip()
         if not name:
             raise _invalid("시리즈 이름을 입력해 주세요.")
-        if series_repo.find_other_series_by_name(db, name, series.id) is not None:
+        if series_repo.find_other_series_by_name(db, name, series.id, user_id=user.id) is not None:
             raise HTTPException(status_code=409, detail=NAME_TAKEN)
-        series_repo.rename_series(db, series, name)
+        series_repo.rename_series(db, series, name, user_id=user.id)
     if "description" in sent:
-        series_repo.set_description(db, series, (body.description or "").strip() or None)
+        series_repo.set_description(db, series, (body.description or "").strip() or None, user_id=user.id)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail=NAME_TAKEN)
-    return _series_response(series, errors_repo.count_errors_by_series(db).get(series.id, 0))
+    return _series_response(series, errors_repo.count_errors_by_series(db, user_id=user.id).get(series.id, 0))
 
 
 # A-013 시리즈 삭제 (R-005, D-050). 속한 에러의 소속만 비워지고 에러는 남는다.
 @router.delete("/series/{series_id}", status_code=204)
-def delete_series(series_id: int, db: Session = Depends(get_db)) -> None:
-    series = series_repo.get_series(db, series_id)
+def delete_series(series_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> None:
+    series = series_repo.get_owned_series(db, user_id=user.id, series_id=series_id)
     if series is None:
         raise HTTPException(status_code=404, detail="시리즈를 찾을 수 없어요.")
-    series_repo.delete_series(db, series)
+    series_repo.delete_series(db, series, user_id=user.id)
     db.commit()
 
 
@@ -597,10 +623,12 @@ class SeriesOrderRequest(BaseModel):
 
 # A-014 시리즈 안 순서 바꾸기 (R-005, D-051). 전체를 바꿔 끼운다. ID가 그 시리즈의 에러와 정확히 같지 않으면 422.
 @router.put("/series/{series_id}/order", response_model=list[ErrorListItem])
-def reorder_series(series_id: int, body: SeriesOrderRequest, db: Session = Depends(get_db)) -> list[ErrorListItem]:
-    if series_repo.get_series(db, series_id) is None:
+def reorder_series(
+    series_id: int, body: SeriesOrderRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> list[ErrorListItem]:
+    if series_repo.get_owned_series(db, user_id=user.id, series_id=series_id) is None:
         raise HTTPException(status_code=404, detail="시리즈를 찾을 수 없어요.")
-    if not errors_repo.reorder_series(db, series_id, body.error_ids):
+    if not errors_repo.reorder_series(db, series_id, body.error_ids, user_id=user.id):
         raise _invalid("순서를 바꿀 기록이 시리즈의 기록과 맞지 않아요. 화면을 새로 고쳐 주세요.")
     db.commit()
-    return _list_items(db, errors_repo.list_errors(db, None, [], None, series_id))
+    return _list_items(db, user.id, errors_repo.list_errors(db, None, [], None, series_id, user_id=user.id))

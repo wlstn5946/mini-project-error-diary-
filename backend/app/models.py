@@ -16,13 +16,45 @@ def now_kst() -> str:
     return datetime.now(KST).isoformat(timespec="seconds")
 
 
+class User(Base):
+    """계정. 회원가입으로 만든다. (D-082, D-084, D-085)"""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # 입력한 표기 그대로 보여준다 (예: Alice)
+    username: Mapped[str] = mapped_column(String)
+    # 중복 판단용. 소문자로 바꾼 username이다 (예: alice). D-019 방식. (D-085)
+    username_key: Mapped[str] = mapped_column(String, unique=True)
+    # argon2 해시. 비밀번호 원문은 저장하지 않는다.
+    password_hash: Mapped[str] = mapped_column(String)
+    created_at: Mapped[str] = mapped_column(String, default=now_kst)
+
+
+class UserSession(Base):
+    """로그인 세션. 토큰 원문은 쿠키에만 있고 DB에는 sha256 해시만 저장한다. (D-084)"""
+
+    __tablename__ = "sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    token_hash: Mapped[str] = mapped_column(String, unique=True)
+    # 만료 시각. created_at + 7일, 한국 시간 ISO 8601이라 문자열 비교가 시간순 비교와 같다. (D-015)
+    expires_at: Mapped[str] = mapped_column(String)
+    created_at: Mapped[str] = mapped_column(String, default=now_kst)
+
+
 class Series(Base):
     """시리즈. 새 시리즈는 에러를 저장할 때 함께 만든다. (D-011)"""
 
     __tablename__ = "series"
+    # 같은 이름은 같은 사용자 안에서만 겹치지 못한다. 다른 사용자는 같은 이름을 가질 수 있다. (D-086)
+    __table_args__ = (UniqueConstraint("user_id", "name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String, unique=True)
+    # 시리즈 주인 (D-086)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    name: Mapped[str] = mapped_column(String)
     description: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[str] = mapped_column(String, default=now_kst)
 
@@ -31,12 +63,16 @@ class Tag(Base):
     """태그. 새 태그는 에러를 저장할 때 함께 만든다. (D-018, D-020)"""
 
     __tablename__ = "tags"
+    # 같은 사용자 안에서만 name_key가 겹치지 못한다. (D-019, D-086)
+    __table_args__ = (UniqueConstraint("user_id", "name_key"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # 태그 주인 (D-086)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     # 처음 입력한 표기 그대로 보여준다 (예: Python)
     name: Mapped[str] = mapped_column(String)
     # 대소문자를 무시한 비교용 값 (예: python). COLLATE NOCASE 대신 써서 PostgreSQL에서도 같게 동작한다. (D-019)
-    name_key: Mapped[str] = mapped_column(String, unique=True)
+    name_key: Mapped[str] = mapped_column(String)
     created_at: Mapped[str] = mapped_column(String, default=now_kst)
 
 
@@ -46,6 +82,8 @@ class ErrorRecord(Base):
     __tablename__ = "errors"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    # 기록 주인. 모든 조회가 user_id로 거르므로 인덱스를 둔다. (D-086)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     error_message: Mapped[str] = mapped_column(String)
     situation: Mapped[str | None] = mapped_column(String)
     series_id: Mapped[int | None] = mapped_column(ForeignKey("series.id"))
