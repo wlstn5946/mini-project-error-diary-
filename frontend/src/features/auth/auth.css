@@ -1,0 +1,108 @@
+/* 로그인·회원가입 화면과 사이드바 계정 영역 (공용). 색·변수는 index.css의 것을 쓴다. 디자인은 이후 단계에서 다듬는다. */
+.auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100svh;
+  padding: 24px 16px;
+  box-sizing: border-box;
+  background: var(--sidebar-bg);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 360px;
+  padding: 28px 24px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.auth-brand {
+  margin-bottom: 4px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.auth-card .page-title {
+  margin-top: 0;
+}
+
+.auth-field {
+  margin-bottom: 14px;
+}
+
+.auth-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.auth-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.auth-rule {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-sub);
+}
+
+.auth-rule.violated {
+  color: #dc2626;
+}
+
+.auth-error {
+  margin: 0 0 14px;
+  color: #dc2626;
+  font-size: 14px;
+}
+
+.auth-notice {
+  margin: 0 0 14px;
+  color: #15803d;
+  font-size: 14px;
+}
+
+.auth-submit {
+  width: 100%;
+}
+
+.auth-switch {
+  margin: 16px 0 0;
+  font-size: 14px;
+  color: var(--text-sub);
+}
+
+.auth-switch a {
+  color: var(--accent);
+}
+
+/* 사이드바 맨 아래: 현재 아이디와 로그아웃. 메뉴 항목이 아니다 (D-005) */
+.sidebar-account {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.account-name {
+  padding: 0 4px;
+  font-size: 14px;
+  color: var(--text-sub);
+  word-break: break-all;
+}
+
+.account-logout {
+  padding: 7px 12px;
+  font-size: 14px;
+}
