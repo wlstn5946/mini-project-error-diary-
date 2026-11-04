@@ -132,7 +132,7 @@ function RecordFilters({
             <button
               key={tag.id}
               type="button"
-              className="filter-chip tag"
+              className={tag.error_count === 0 ? 'filter-chip tag empty' : 'filter-chip tag'}
               aria-pressed={tagIds.includes(tag.id)}
               onClick={() => onToggleTag(tag.id)}
             >

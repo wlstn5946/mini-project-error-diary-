@@ -8,6 +8,7 @@ import {
   type SavedError,
   type SimilarError,
 } from '../features/records/errorsApi'
+import ErrorMessageView from '../components/ErrorMessageView'
 import SeriesSelect, { type SeriesChoice } from '../features/records/SeriesSelect'
 import SimilarRecords from '../features/records/SimilarRecords'
 import '../features/records/SimilarRecords.css'
@@ -424,7 +425,7 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
           )}
           {!locked && <p className="empty">아직 AI에게 묻지 않았어요. &quot;에러 입력&quot; 탭에서 에러를 입력해 주세요.</p>}
 
-          {locked && <pre className="code-view">{errorMessage}</pre>}
+          {locked && <ErrorMessageView text={errorMessage} />}
 
           {detail && <PreviousAttempts detail={detail} />}
 
@@ -474,7 +475,7 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
         <section role="tabpanel" id="panel-result" aria-labelledby="tab-result">
           {saved ? (
             <>
-              <pre className="code-view">{saved.error_message}</pre>
+              <ErrorMessageView text={saved.error_message} />
               <SaveResult
                 saved={saved}
                 feedback={feedback.feedback ?? null}

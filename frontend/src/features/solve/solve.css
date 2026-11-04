@@ -3,199 +3,300 @@
   margin: 16px 0 0;
   padding: 0;
   list-style: none;
-  font-size: 14px;
+  font-size: var(--fs-sm);
 }
 
 .attempt-history li {
-  padding: 6px 0;
-  border-bottom: 1px solid var(--border);
-  color: var(--text-sub);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-sub);
 }
 
 .attempt-badge {
-  margin-right: 6px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: #fee2e2;
-  color: #991b1b;
-  font-size: 12px;
-  font-weight: 700;
+  margin-right: 8px;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
 }
 
 .attempt-badge.partial {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--warn-bg);
+  color: var(--warn-fg);
 }
 
 .attempt-badge.solved {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--ok-bg);
+  color: var(--ok-fg);
 }
 
 .attempt-notice {
   margin: 16px 0 8px;
-  color: var(--text-sub);
-  font-size: 14px;
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
 }
 
+/* 시도 기록 카드 */
 .attempt-card {
-  margin-top: 16px;
-  padding: 16px 18px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  margin-top: 24px;
+  padding: 22px 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
 }
 
 .attempt-title {
-  margin: 0 0 12px;
-  font-size: 16px;
+  margin: 0 0 16px;
+  font-size: var(--fs-md);
+  font-weight: 600;
 }
 
 .attempt-input {
-  box-sizing: border-box;
   width: 100%;
-  margin-bottom: 14px;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font: inherit;
+  margin-bottom: 16px;
 }
 
 .attempt-results {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  margin: 0 0 14px;
+  gap: 8px;
+  margin: 0 0 16px;
   padding: 0;
   border: 0;
 }
 
 .attempt-results legend {
-  margin-bottom: 6px;
+  padding: 0;
 }
 
+/* 결과 라디오는 칩 모양이다. input type=radio와 label 구조는 그대로다 */
 .attempt-result {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
   cursor: pointer;
+  transition:
+    background-color 0.12s var(--ease),
+    border-color 0.12s var(--ease),
+    color 0.12s var(--ease);
+}
+
+.attempt-result input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.attempt-result:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.attempt-result:has(input:focus-visible) {
+  box-shadow: var(--focus);
 }
 
 .attempt-required {
-  color: var(--accent);
+  color: var(--danger-fg);
 }
 
 .attempt-error {
   margin: 8px 0 0;
-  color: #b91c1c;
-  font-size: 14px;
+  color: var(--error-text);
+  font-size: var(--fs-sm);
 }
 
+/* 존재감 ②: "해결로 저장했어요" 배너. 이 화면의 움직임은 이것 하나뿐이다 (D-109) */
 .resolved-banner {
-  margin-bottom: 16px;
-  padding: 16px;
-  border: 1px solid #bbf7d0;
-  border-radius: 10px;
-  background: #f0fdf4;
-  text-align: center;
+  position: relative;
+  margin-bottom: 24px;
+  padding: 22px 24px;
+  border: 1px solid color-mix(in srgb, var(--ok-fg) 20%, var(--ok-bg));
+  border-radius: var(--radius-panel);
+  background: var(--ok-bg);
+  text-align: left;
+}
+
+.resolved-banner.solved {
+  padding-left: 76px;
+  animation: resolved-rise 0.45s var(--ease) both;
+}
+
+.resolved-mark {
+  position: absolute;
+  top: 50%;
+  left: 24px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  margin-top: -17px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ok-fg);
+  color: var(--accent-text);
+  animation: resolved-pop 0.4s var(--ease) both;
+}
+
+.resolved-mark svg {
+  width: 18px;
+  height: 18px;
+}
+
+.resolved-mark path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: resolved-draw 0.45s var(--ease) 0.15s both;
+}
+
+@keyframes resolved-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes resolved-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes resolved-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resolved-banner.solved,
+  .resolved-mark,
+  .resolved-mark path {
+    animation: none;
+  }
 }
 
 .resolved-title {
-  margin: 0 0 4px;
-  color: #166534;
-  font-size: 18px;
+  margin: 0;
+  color: var(--ok-fg);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .resolved-sub {
-  margin: 0;
-  color: var(--text-sub);
-  font-size: 14px;
+  margin: 4px 0 0;
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
 }
 
-.resolved-table {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 8px 16px;
-  margin: 0 0 16px;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 14px;
-}
-
-.resolved-table dt {
-  color: var(--text-sub);
-}
-
-.resolved-table dd {
-  margin: 0;
-  text-align: right;
-  word-break: break-word;
-}
-
-.resolved-summary {
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  border-left: 4px solid #22c55e;
-  background: #f0fdf4;
-}
-
-.locked-notice {
-  margin: 0 0 14px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: var(--sidebar-bg);
-  color: var(--text-sub);
-  font-size: 14px;
-}
-
-.locked-notice .btn-secondary {
-  margin-left: 8px;
-  padding: 4px 12px;
-  font-size: 13px;
-}
-
-.situation-input {
-  box-sizing: border-box;
-  width: 100%;
-  margin-bottom: 14px;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font: inherit;
-}
-
-.save-error {
-  color: #b91c1c;
-  font-size: 14px;
-}
-
-/* 결과 탭 배너: 마지막 시도가 해결됨이 아니면 초록 대신 중립색 (D-064) */
+/* 결과 탭 배너: 마지막 시도가 해결됨이 아니면 초록 대신 중립색이고 원과 움직임이 없다 (D-064) */
 .resolved-banner.failed,
 .resolved-banner.partial {
-  border-color: var(--border);
-  background: var(--sidebar-bg);
+  border-color: var(--line);
+  background: var(--surface-sub);
 }
 
 .resolved-banner.failed .resolved-title,
 .resolved-banner.partial .resolved-title {
-  color: var(--text);
+  color: var(--ink);
+}
+
+/* 결과 요약표 */
+.resolved-table {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 12px 16px;
+  margin: 0 0 24px;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  font-size: var(--fs-sm);
+}
+
+.resolved-table dt {
+  color: var(--ink-sub);
+}
+
+.resolved-table dd {
+  margin: 0;
+  font-weight: 500;
+  text-align: right;
+  word-break: break-word;
+}
+
+/* 한 줄 정리: 바탕·테두리 없이 왼쪽 초록 선. 상세(.detail-summary)도 같은 모양이다 */
+.resolved-summary,
+.detail-summary {
+  margin: 0 0 24px;
+  padding: 4px 0 4px 18px;
+  border: 0;
+  border-left: 2px solid var(--ok-fg);
+  border-radius: 0;
+  background: none;
+}
+
+.locked-notice {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-radius: var(--radius-control);
+  background: var(--surface-sub);
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
+}
+
+.locked-notice .btn-secondary {
+  margin-left: 8px;
+}
+
+/* 시리즈·태그·상황 각 항목 아래 여백은 24px이다 (series-select, tag-input은 각 css) */
+.situation-input {
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+.save-error {
+  color: var(--error-text);
+  font-size: var(--fs-sm);
 }
 
 .resolved-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  margin-top: 24px;
 }
 
-/* AI 피드백 칸과 한 줄 정리 수정 폼 (결과 탭·에러 일기 상세가 같이 쓴다) */
+/* AI 피드백 칸과 한 줄 정리 수정 폼 (결과 탭·에러 일기 상세가 같이 쓴다): 바탕 없이 왼쪽 인디고 선 */
 .feedback-box {
-  margin: 0 0 16px;
-  padding: 12px 16px;
-  border-left: 4px solid #2447d6;
-  background: #eef2ff;
+  margin: 0 0 24px;
+  padding: 4px 0 4px 18px;
+  border: 0;
+  border-left: 2px solid var(--accent);
+  border-radius: 0;
+  background: none;
 }
 
-.feedback-box .ai-label,
+.feedback-box .ai-label {
+  margin: 0 0 4px;
+}
+
 .feedback-box .ai-text,
 .feedback-box .hint {
   margin: 0;
@@ -203,14 +304,12 @@
 
 .feedback-failed {
   margin: 0;
-  color: var(--text-sub);
-  font-size: 14px;
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
 }
 
 .feedback-failed .btn-secondary {
   margin-left: 8px;
-  padding: 4px 12px;
-  font-size: 13px;
 }
 
 .summary-edit {
@@ -222,8 +321,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
 .retry-labels .field-label {

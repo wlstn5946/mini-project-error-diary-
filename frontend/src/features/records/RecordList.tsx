@@ -51,7 +51,9 @@ export function RecordItemContent({ item, showDate = false, showSeries = true, r
         <span className={`status-badge ${item.status}`}>{STATUS_LABELS[item.status]}</span>
         {/* 오래된 기록(미해결 + 등록 14일 이상)은 깜빡이는 빨간 불로 알린다 (D-078) */}
         {item.is_stale && <StaleDot label="등록한 지 14일 이상 지난 미해결 기록" />}
-        <span className="record-title">{firstLine(item.error_message)}</span>
+        <span className="record-title" title={firstLine(item.error_message)}>
+          {firstLine(item.error_message)}
+        </span>
         {reuseBadge && item.reused_from_id !== null && <span className="reuse-badge">재사용</span>}
       </span>
       <span className="record-meta">

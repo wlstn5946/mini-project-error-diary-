@@ -4,52 +4,63 @@
 }
 
 .record-search {
-  box-sizing: border-box;
   width: 100%;
   margin-bottom: 12px;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font: inherit;
 }
 
 .chip-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
+/* 칩: 무채색, 켜진 칩만 인디고 (D-109) */
 .filter-chip {
-  padding: 4px 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg);
-  color: var(--text-sub);
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--ink-sub);
   font: inherit;
-  font-size: 14px;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
   cursor: pointer;
+  transition:
+    background-color 0.12s var(--ease),
+    border-color 0.12s var(--ease),
+    color 0.12s var(--ease);
+}
+
+.filter-chip:hover {
+  background: var(--surface-sub);
 }
 
 .filter-chip[aria-pressed='true'] {
   border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-text);
-  font-weight: 700;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
 }
 
-/* "오래된 기록" 칩: 다른 상태 칩과 같은 모양이고, 빨간 불이 있을 때 불과 글자 사이만 띄운다 (D-078) */
+/* 기록이 0개인 태그 칩은 흐리게 보인다. 누르는 동작은 그대로다 (D-111) */
+.filter-chip.empty {
+  opacity: 0.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .filter-chip {
+    transition: none;
+  }
+}
+
+/* "오래된 기록" 칩: 다른 상태 칩과 같은 모양이고, 빨간 불이 있을 때 불과 글자 사이만 띄운다 (D-078).
+   칩이 켜져도 불은 빨간색 그대로다(켜진 칩 바탕이 옅어서 흰 불은 보이지 않는다) */
 .stale-chip {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-}
-
-.filter-chip.tag[aria-pressed='true'] {
-  border-color: #3730a3;
-  background: #eef2ff;
-  color: #3730a3;
+  gap: 8px;
 }
 
 .record-filters .hint {
@@ -57,20 +68,18 @@
 }
 
 .record-error {
-  color: #b91c1c;
-  font-size: 14px;
+  color: var(--error-text);
+  font-size: var(--fs-sm);
 }
 
 .record-retry {
   margin-left: 8px;
-  padding: 2px 10px;
-  font-size: 13px;
 }
 
 .record-state {
   padding: 24px 0;
   color: var(--text-sub);
-  font-size: 14px;
+  font-size: var(--fs-sm);
 }
 
 .record-state .btn-primary,
@@ -78,36 +87,78 @@
   margin-left: 8px;
 }
 
+/* 날짜 제목: 왼쪽 날짜, 오른쪽 개수 (양 끝 정렬) */
 .record-date {
-  margin: 20px 0 8px;
-  font-size: 15px;
+  display: flex;
+  justify-content: space-between;
+  margin: 36px 0 8px;
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
+  font-weight: 600;
 }
 
 .record-date-count {
-  margin-left: 4px;
-  color: var(--text-sub);
-  font-size: 13px;
+  color: var(--ink-faint);
   font-weight: 400;
 }
 
+/* 태그별 탭 제목 안의 개수는 제목 바로 옆에 둔다 */
+.tag-view-heading .record-date-count {
+  margin-left: 8px;
+}
+
+/* 날짜별 묶음은 하나의 패널이다. 마지막 항목은 아래 선이 없다 */
 .record-items {
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
   list-style: none;
 }
 
+.record-items > li:last-child .record-item,
+.record-items > li:last-child .record-row {
+  border-bottom: 0;
+}
+
+/* 기록 한 줄: 왼쪽 3px 상태 막대(미해결 빨강, 해결 초록) */
 .record-item {
+  position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
+  gap: 8px;
+  padding: 16px 20px 16px 24px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
   text-decoration: none;
+  transition: background-color 0.12s var(--ease);
+}
+
+.record-item::before {
+  content: '';
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--danger-fg);
+}
+
+.record-item:has(.status-badge.resolved)::before {
+  background: var(--ok-fg);
 }
 
 .record-item:hover {
-  background: var(--sidebar-bg);
+  background: var(--page);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .record-item {
+    transition: none;
+  }
 }
 
 .status-badge {
@@ -115,17 +166,13 @@
   /* "해결"과 "미해결"의 너비를 맞춰 제목 시작 위치를 정렬한다 */
   min-width: 3.5em;
   text-align: center;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: #fee2e2;
-  color: #991b1b;
-  font-size: 12px;
-  font-weight: 700;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
 }
 
 .status-badge.resolved {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--ok-bg);
+  color: var(--ok-fg);
 }
 
 .record-main {
@@ -133,7 +180,7 @@
   min-width: 0;
   flex: 1;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
 }
 
 /* 윗줄: 상태 배지 + 제목 */
@@ -144,10 +191,14 @@
   gap: 8px;
 }
 
+/* 제목은 에러 메시지 첫 줄, 한 줄 말줄임(전체는 title 속성으로 보인다) */
 .record-title {
   min-width: 0;
   overflow: hidden;
-  font-weight: 700;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -157,55 +208,27 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  color: var(--text-sub);
-  font-size: 12px;
+  gap: 8px 12px;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
 }
 
+/* 시리즈 표시: 주황 작은 둥근 배지 */
 .record-series {
-  padding: 0 7px;
-  border-radius: 4px;
-  background: #fff1e0;
-  color: #b45309;
-  font-weight: 700;
-}
-
-.record-tag {
   padding: 0 8px;
-  border-radius: 999px;
-  background: #eef2ff;
-  color: #3730a3;
+  border-radius: var(--radius-full);
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  font-size: var(--fs-xs);
+  font-weight: 500;
 }
 
-/* 내 기록 탭 (날짜별 / 태그별 / 시리즈별). 고른 탭은 어두운 바탕 (시안 내기록창) */
-.view-tabs {
-  display: flex;
-  margin-bottom: 16px;
-  overflow: hidden;
-  border: 1px solid #1f2937;
-  border-radius: 6px;
+/* 태그 표시: 바탕 없이 글자만 */
+.record-tag {
+  color: var(--ink-sub);
 }
 
-.view-tab {
-  flex: 1;
-  padding: 8px 0;
-  border: 0;
-  background: var(--bg);
-  color: var(--text-sub);
-  font: inherit;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.view-tab + .view-tab {
-  border-left: 1px solid var(--border);
-}
-
-.view-tab[aria-selected='true'] {
-  background: #1f2937;
-  color: #fff;
-  font-weight: 700;
-}
+/* 내 기록 탭 (날짜별 / 태그별 / 시리즈별)은 index.css의 밑줄 탭을 쓴다 (D-111) */
 
 /* 태그별 보기 (D-055, 시안 내기록창 ②) */
 .tag-view-caption-row {
@@ -222,25 +245,21 @@
 
 .tag-view-caption {
   margin: 0 0 8px;
-  color: var(--text-sub);
-  font-size: 13px;
-}
-
-.tag-chip[aria-pressed='true'] {
-  border-color: #2447d6;
-  background: #2447d6;
-  color: #fff;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
 }
 
 .chip-count {
   margin-left: 4px;
-  opacity: 0.7;
-  font-size: 12px;
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
 }
 
 .tag-view-heading {
-  margin: 18px 0 4px;
-  font-size: 15px;
+  margin: 32px 0 8px;
+  font-size: var(--fs-md);
+  font-weight: 600;
 }
 
 .tag-view .hint {
@@ -252,7 +271,7 @@
   display: inline-block;
   margin-bottom: 8px;
   color: var(--text-sub);
-  font-size: 14px;
+  font-size: var(--fs-sm);
   text-decoration: none;
 }
 
@@ -263,31 +282,35 @@
 .detail-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .detail-title {
   margin: 0;
-  font-size: 18px;
+  font-family: var(--mono);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  letter-spacing: -0.01em;
   word-break: break-word;
 }
 
 .detail-meta {
-  margin: 8px 0 16px;
+  margin: 8px 0 20px;
 }
 
+/* 상세의 섹션 사이는 32px이다 */
 .detail-section {
-  margin-top: 20px;
+  margin-top: 32px;
 }
 
 .detail-label {
-  margin: 0 0 8px;
-  font-size: 15px;
+  margin-top: 0;
 }
 
-/* 시도별 타임라인: 점은 결과 색, 선은 점을 잇는다 */
+/* 시도별 타임라인: 점은 결과 색(재사용은 인디고, 에러 발생·해결 안 됨은 빨강), 1px 선이 점을 잇는다.
+   점 둘레 3px는 본문 바탕(--page)이라 선이 점 뒤에서 끊겨 보인다 */
 .timeline {
-  margin: 0 0 0 6px;
+  margin: 0 0 0 4px;
   padding: 0;
   list-style: none;
 }
@@ -296,9 +319,9 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 0 0 16px 20px;
-  border-left: 2px solid var(--border);
+  gap: 4px;
+  padding: 0 0 24px 24px;
+  border-left: 1px solid var(--line);
 }
 
 .timeline-item:last-child {
@@ -309,56 +332,52 @@
 .timeline-item::before {
   content: '';
   position: absolute;
-  top: 3px;
-  left: -7px;
-  width: 12px;
-  height: 12px;
+  top: 6px;
+  left: -5px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background: #ef4444;
-  box-shadow: 0 0 0 2px var(--bg);
+  background: var(--danger-fg);
+  box-shadow: 0 0 0 3px var(--page);
 }
 
 .timeline-item.partial::before {
-  background: #f59e0b;
+  background: var(--warn-fg);
 }
 
 .timeline-item.solved::before {
-  background: #22c55e;
+  background: var(--ok-fg);
 }
 
 .timeline-time {
-  color: var(--text-sub);
-  font-size: 13px;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .timeline-text {
+  color: var(--ink);
   word-break: break-word;
 }
 
 .attempt-result-badge {
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: #fee2e2;
-  color: #991b1b;
-  font-size: 12px;
-  font-weight: 700;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
 }
 
 .attempt-result-badge.partial {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--warn-bg);
+  color: var(--warn-fg);
 }
 
 .attempt-result-badge.solved {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--ok-bg);
+  color: var(--ok-fg);
 }
 
-.detail-summary {
-  margin-top: 20px;
-  padding: 12px 16px;
-  border-left: 4px solid #22c55e;
-  background: #f0fdf4;
+/* 한 줄 정리 모양은 solve.css의 .resolved-summary와 같다. 상세에서는 위 간격만 따로 둔다 */
+.detail .detail-summary {
+  margin-top: 32px;
 }
 
 /* 상세의 버튼 영역과 삭제 확인 창 */
@@ -366,7 +385,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 
 /* 내보내기 버튼 묶음은 버튼 줄의 오른쪽 끝에 붙는다 */
@@ -381,37 +400,30 @@
   flex-basis: 100%;
 }
 
-.btn-danger {
-  padding: 6px 14px;
-  border: 1px solid #fca5a5;
-  border-radius: 6px;
-  background: var(--bg);
-  color: #b91c1c;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
+/* 모달(확인 창, 태그 관리): 떠 있는 요소라 그림자를 쓴다 */
+.confirm-dialog,
+.manage-dialog {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: var(--shadow-float);
+  color: var(--ink);
 }
 
-.btn-danger:hover {
-  background: #fef2f2;
+.confirm-dialog::backdrop,
+.manage-dialog::backdrop {
+  background: rgba(16, 24, 40, 0.32);
 }
 
 .confirm-dialog {
   max-width: 420px;
-  padding: 20px 22px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  color: var(--text);
-}
-
-.confirm-dialog::backdrop {
-  background: rgb(0 0 0 / 35%);
+  padding: 24px;
 }
 
 .confirm-title {
   margin: 0 0 8px;
-  font-size: 17px;
+  font-size: var(--fs-md);
+  font-weight: 600;
 }
 
 .confirm-text {
@@ -439,19 +451,12 @@
   width: min(640px, 92vw);
   max-height: 85vh;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  color: var(--text);
-}
-
-.manage-dialog::backdrop {
-  background: rgb(0 0 0 / 35%);
 }
 
 .manage-body {
   box-sizing: border-box;
   max-height: 85vh;
-  padding: 20px 22px;
+  padding: 24px;
   overflow-y: auto;
 }
 
@@ -464,7 +469,8 @@
 
 .manage-title {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--fs-lg);
+  font-weight: 600;
 }
 
 .manage-close {
@@ -478,17 +484,18 @@
 }
 
 .manage-section {
-  margin: 18px 0 8px;
-  font-size: 15px;
+  margin: 24px 0 8px;
+  font-size: var(--fs-md);
+  font-weight: 600;
 }
 
 .manage-notice {
   margin: 0 0 8px;
   padding: 8px 12px;
-  border-radius: 6px;
-  background: #fef3c7;
-  color: #92400e;
-  font-size: 14px;
+  border-radius: var(--radius-control);
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  font-size: var(--fs-sm);
 }
 
 .manage-list {
@@ -511,25 +518,21 @@
   flex: 1;
   min-width: 120px;
   flex-direction: column;
-  font-weight: 700;
+  font-weight: 600;
   word-break: break-word;
 }
 
 .manage-desc {
   color: var(--text-sub);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   font-weight: 400;
 }
 
 .manage-count {
   color: var(--text-sub);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
-.manage-btn {
-  padding: 4px 12px;
-  font-size: 13px;
-}
 
 .manage-edit {
   display: flex;
@@ -542,17 +545,13 @@
 .manage-input {
   flex: 1;
   min-width: 140px;
-  padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font: inherit;
 }
 
 .manage-error {
   flex-basis: 100%;
   margin: 0;
-  color: #b91c1c;
-  font-size: 14px;
+  color: var(--error-text);
+  font-size: var(--fs-sm);
 }
 
 /* 시리즈별 보기 (시안 내기록창_예시.png 참고) */
@@ -570,57 +569,59 @@
   width: 100%;
   height: 100%;
   flex-direction: column;
-  gap: 6px;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg);
-  color: var(--text);
+  gap: 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  color: var(--ink);
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transition: border-color 0.12s var(--ease);
 }
 
+/* hover는 테두리만 진해진다. 선택된 카드만 인디고 */
 .series-card:hover {
-  border-color: #93a4f4;
-  background: #f5f7ff;
+  border-color: var(--line-strong);
 }
 
 .series-card[aria-pressed='true'] {
-  border-color: #f59e0b;
-  background: #fffbeb;
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .series-card-name {
-  font-weight: 700;
+  font-weight: 600;
   word-break: break-word;
 }
 
 .series-card-count {
   margin-top: auto;
-  color: #3730a3;
-  font-size: 13px;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
 }
 
 .series-detail {
-  margin-top: 20px;
+  margin-top: 32px;
 }
 
 /* 시리즈 지정 방법 안내 */
 .series-guide {
   margin-top: 24px;
-  padding: 12px 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--sidebar-bg);
-  color: var(--text-sub);
-  font-size: 13px;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
 }
 
 .series-guide-title {
-  margin: 0 0 6px;
-  color: var(--text);
-  font-size: 14px;
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  font-weight: 600;
 }
 
 .series-guide ul {
@@ -639,14 +640,16 @@
 
 .series-name {
   margin: 0;
-  font-size: 18px;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   word-break: break-word;
 }
 
 .series-desc {
   margin: 4px 0 0;
-  color: var(--text-sub);
-  font-size: 14px;
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
 }
 
 .series-detail .manage-edit {
@@ -663,9 +666,14 @@
   margin-top: 16px;
 }
 
+/* 시리즈 안 기록 목록: 선으로 둘러싼 패널 */
 .series-items {
   margin: 0;
   padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
   list-style: none;
 }
 
@@ -673,28 +681,39 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  border-bottom: 1px solid var(--border);
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.series-item:last-child {
+  border-bottom: 0;
 }
 
 .series-no {
   display: inline-flex;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  margin-left: 4px;
   border-radius: 50%;
-  background: #eef2ff;
-  color: #3730a3;
-  font-size: 13px;
-  font-weight: 700;
+  background: var(--surface-sub);
+  color: var(--ink-sub);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
+/* 제목은 기록 한 줄(.record-item)을 그대로 쓰므로 안쪽 여백만 줄인다 */
 .series-link {
   min-width: 0;
   flex: 1;
+  padding: 12px 8px;
   border-bottom: 0;
+}
+
+.series-link::before {
+  display: none;
 }
 
 .series-arrows {
@@ -703,10 +722,12 @@
   gap: 4px;
 }
 
+/* ▲▼ 버튼: 가는 선, 둥글기 6px */
 .arrow-btn {
-  padding: 2px 9px;
-  font-size: 12px;
-  line-height: 1.6;
+  border-color: var(--line);
+  border-radius: 6px;
+  color: var(--ink-sub);
+  font-size: var(--fs-xs);
 }
 
 /* 기록 수정 편집 모드 (S-003, A-010) */
@@ -714,23 +735,17 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
-.edit-situation {
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font: inherit;
+  gap: 12px;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
 }
 
 .edit-error {
   margin: 0;
-  color: #b91c1c;
-  font-size: 14px;
+  color: var(--error-text);
+  font-size: var(--fs-sm);
 }
 
 .edit-buttons {
@@ -773,12 +788,19 @@
 
   /* 어두운 배경의 코드 영역은 흰 바탕·검은 글씨로 바꾸고, 긴 Traceback이 잘리지 않게 줄바꿈한다 */
   body.printing-record .detail .code-view {
+    padding: 12px 14px;
     border: 1px solid #9ca3af;
+    box-shadow: none;
     background: none;
     color: #000;
     overflow: visible;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  /* 터미널 강조색(옅은 빨강)은 흰 종이에서 안 보이므로 검정으로 둔다 */
+  body.printing-record .detail .code-view .code-line-error {
+    color: #000;
   }
 
   body.printing-record .detail-summary,
@@ -819,13 +841,10 @@
 
 .reuse-badge {
   flex-shrink: 0;
-  padding: 1px 8px;
   border: none;
-  border-radius: 999px;
-  background: #e0f2fe;
-  color: #075985;
-  font-size: 12px;
-  font-weight: 700;
+  background: var(--info-bg);
+  color: var(--info-fg);
+  font-family: inherit;
   white-space: nowrap;
 }
 
@@ -834,12 +853,13 @@ button.reuse-badge {
 }
 
 button.reuse-badge:hover {
-  background: #bae6fd;
+  background: color-mix(in srgb, var(--info-fg) 12%, var(--info-bg));
 }
 
+/* 원본 줄 오른쪽 끝. 윗줄 높이(항목 안쪽 여백 16px)에 맞춘다 */
 .record-row > .reuse-badge,
 .record-row > .reuse-origin-link {
-  margin: 12px 12px 0 0;
+  margin: 16px 20px 0 0;
 }
 
 /* 줄 안에서 오른쪽 끝에 붙이는 표시용 배지 (시리즈별 탭) */
@@ -849,36 +869,45 @@ button.reuse-badge:hover {
 
 .reuse-origin-link {
   flex-shrink: 0;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: #f3f4f6;
-  color: #374151;
-  font-size: 12px;
-  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: var(--radius-full);
+  background: var(--surface-sub);
+  color: var(--ink-sub);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  line-height: 1.5;
   text-decoration: none;
   white-space: nowrap;
 }
 
 .reuse-origin-link:hover {
-  background: #e5e7eb;
+  background: var(--line);
 }
 
+/* 접힌 재사용 기록 묶음: 본문 바탕색으로 원본 줄과 구분하고 왼쪽 선으로 들여 쓴다 */
 .record-children {
-  margin: 0 0 0 28px;
-  padding: 0;
-  border-left: 2px solid #bae6fd;
+  margin: 0;
+  padding: 0 0 0 24px;
+  border-top: 1px solid var(--line);
+  border-left: 2px solid var(--line-strong);
+  background: var(--page);
   list-style: none;
 }
 
 /* 상세 타임라인의 재사용 기록 */
 .timeline-item.reuse::before {
-  background: #0ea5e9;
+  background: var(--accent);
 }
 
 .timeline-chips {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 8px;
+  font-size: var(--fs-xs);
+}
+
+/* 목록 패널(overflow: hidden) 안의 링크는 바깥 링이 잘리므로 안쪽 링을 쓴다 */
+.record-item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
