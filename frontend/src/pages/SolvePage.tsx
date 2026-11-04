@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
+import { keyLine } from '../errorText'
 import {
   createError,
   searchSimilarErrors,
@@ -32,7 +33,8 @@ import '../features/solve/solve.css'
 // S-001 에러 해결 (R-001 ~ R-004, SCREEN-SPEC_7). 탭은 에러 입력 / AI 제안 → 시도 기록 / 결과 3개다 (D-064).
 // 에러 메시지 입력이 멈추면 A-003으로 비슷한 기록을 자동으로 찾는다. "해당 없음 → AI에게 묻기"를 누르면 입력을 잠그고 A-005로 간다.
 // 에러와 시도는 화면에만 모아 두고, "기록 저장"을 누를 때 A-002 한 번으로 저장한다. 이어서 결과 탭에서 A-016으로 AI 피드백을 받는다.
-// 비슷한 기록의 "이 방법 적용"도 A-002로 저장(시도 1개, 해결됨)하고 결과 탭을 보여준다.
+// 비슷한 기록의 "이 방법 써 보기"는 저장하지 않는다. 원본 해결법을 시도 1로 채운 시도 기록 화면으로 가고, 결과는 사용자가 고른다 (D-128, D-069 변경).
+// 적용한 방법 자체가 해결됐을 때만 원본과 연결(reused_from_id)해서 저장하고, 해결 안 됨이면 AI 제안으로 이어간다.
 // 이어서 해결하기(D-075 ~ D-077): /solve?retry={id}는 미해결 기록을 불러와(A-009) 입력은 잠그고 이어서 시도를 모은다.
 // 이때는 A-002 대신 A-006으로 이번에 새로 한 시도만 저장하고, A-005의 previous_attempts에는 기존 실패·일부 해결 시도를 함께 넣는다.
 // 일반 모드(retry 없음)의 동작은 그대로다. 아래 SolveFlow가 본체이고, SolvePage는 retry를 읽어 SolveFlow를 고른다.
@@ -42,7 +44,6 @@ type Tab = 'input' | 'analysis' | 'result'
 // 입력이 멈추고 잠시 뒤에 비슷한 기록을 찾는다
 const SEARCH_DELAY_MS = 300
 const SEARCH_FAILED_NOTICE = '비슷한 기록을 확인하지 못했어요.'
-const APPLY_FAILED = '이 방법을 적용하지 못했어요. 입력한 내용은 그대로 있으니 다시 시도해 주세요.'
 
 const EMPTY_TAGS: TagsValue = { existingIds: [], newNames: [] }
 
@@ -72,15 +73,15 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
   // null이면 새 시리즈 이름이 비었거나 중복이다
   const [seriesChoice, setSeriesChoice] = useState<SeriesChoice | null>({ kind: 'none' })
   const [tagsValue, setTagsValue] = useState<TagsValue>(EMPTY_TAGS)
-  // "AI에게 묻기"(또는 "이 방법 적용" 성공)를 누르면 입력을 잠근다. 시도 기록이 그때의 에러 메시지에 대한 것이기 때문이다 (D-064)
+  // "AI에게 묻기"(또는 "이 방법 써 보기")를 누르면 입력을 잠근다. 시도 기록이 그때의 에러 메시지에 대한 것이기 때문이다 (D-064)
   // 이어서 해결하기에서 비슷한 기록이 0건이면 들어오자마자 AI에게 묻는 상태로 시작한다
   const [locked, setLocked] = useState(enteredAtAi)
   // 비슷한 기존 기록 (A-003). 이어서 해결하기는 들어올 때 이미 한 번 찾아 왔다
   const [similar, setSimilar] = useState<SimilarResult | null>(
     detail ? { query: detail.error_message.trim(), items: retry.similar } : null,
   )
-  const [applyingId, setApplyingId] = useState<number | null>(null)
-  const [applyError, setApplyError] = useState<string | null>(null)
+  // 지금 써 보는 기존 기록 ("이 방법 써 보기", 아직 저장 전, D-128)
+  const [applied, setApplied] = useState<SimilarError | null>(null)
   const [loading, setLoading] = useState(enteredAtAi)
   const [result, setResult] = useState<Suggestion | null>(null)
   // 화면에 모아 둔 시도 (아직 저장하지 않음). 이번에 쓰는 시도는 폼에 있고 여기에 없다
@@ -94,6 +95,10 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
   const busy = useRef(false)
 
   const message = errorMessage.trim()
+  // 적용 시도 문구. 타임라인 표시용이고, 원본 연결은 reused_from_id로 한다 (D-080)
+  const appliedAction = applied ? `기존 기록 #${applied.id}의 해결 방법 적용` : null
+  // 적용 중이고 아직 모은 시도가 없으면 AI 결과 없이 시도 1 폼을 보여 준다
+  const applyingFirst = applied !== null && collected.length === 0
   // 에러 메시지·상황·시리즈·태그를 고칠 수 없는 상태: AI에게 물었거나 저장했거나, 이어서 해결하는 중이다
   const inputLocked = locked || retrying
 
@@ -147,8 +152,8 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
     setLoading(false)
     setResult(null)
     setCollected([])
+    setApplied(null)
     setSaveError(null)
-    setApplyError(null)
     setTab('input')
   }
 
@@ -206,7 +211,6 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
     setLocked(true)
     setCollected([])
     setSaveError(null)
-    setApplyError(null)
     setTab('analysis')
     void suggest(message, [])
   }
@@ -228,7 +232,10 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
     let record: SavedError
     try {
       const attempts = [...collected, { action: body.action, result: body.result }]
-      record = await persist(seriesChoice, attempts, body.summary)
+      // 적용한 방법 자체가 해결됐을 때만 원본과 연결한다: 시도가 이번 하나뿐이고 그게 적용 시도이며 해결됨 (D-128)
+      const reusedFromId =
+        applied && collected.length === 0 && body.action === appliedAction && body.result === 'solved' ? applied.id : null
+      record = await persist(seriesChoice, attempts, body.summary, reusedFromId)
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e))
       return
@@ -239,29 +246,17 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
     showSaved(record)
   }
 
-  // "같은 에러예요, 이 방법 적용": 시도 1개(해결됨, 고른 기록의 한 줄 정리 복사)로 저장하고 결과 탭을 보여준다 (D-041 변경, D-064)
-  async function applyMatch(match: SimilarError) {
+  // "이 방법 써 보기": 저장하지 않고 시도 1을 채운 채 시도 기록 화면으로 간다. 결과는 사용자가 고른다 (D-128, D-069 변경)
+  function applyMatch(match: SimilarError) {
     if (!message || seriesChoice === null || busy.current) return
-    busy.current = true
-    setApplyingId(match.id)
-    setApplyError(null)
-    let record: SavedError
-    try {
-      // 시도 문구는 타임라인 표시용으로 남기고, 원본 연결은 reused_from_id로 한다 (D-080)
-      record = await persist(
-        seriesChoice,
-        [{ action: `기존 기록 #${match.id}의 해결 방법 적용`, result: 'solved' }],
-        match.summary,
-        match.id,
-      )
-    } catch (e) {
-      setApplyError(e instanceof Error ? `${e.message} 입력한 내용은 그대로 있어요.` : APPLY_FAILED)
-      return
-    } finally {
-      setApplyingId(null)
-      busy.current = false
-    }
-    showSaved(record)
+    suggestSeq.current++
+    setApplied(match)
+    setLocked(true)
+    setLoading(false)
+    setCollected([])
+    setResult(null)
+    setSaveError(null)
+    setTab('analysis')
   }
 
   // 결과 탭에서 한 줄 정리를 고쳤다: 정리를 바꾸고 피드백을 다시 받아 덮어쓴다 (A-007 → A-016)
@@ -285,8 +280,7 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
     setTagsValue(EMPTY_TAGS)
     setLocked(false)
     setSimilar(null)
-    setApplyingId(null)
-    setApplyError(null)
+    setApplied(null)
     setLoading(false)
     setResult(null)
     setCollected([])
@@ -363,10 +357,7 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
             placeholder="에러 메시지나 Traceback을 붙여넣으세요"
             value={errorMessage}
             readOnly={inputLocked}
-            onChange={(e) => {
-              setErrorMessage(e.target.value)
-              setApplyError(null)
-            }}
+            onChange={(e) => setErrorMessage(e.target.value)}
           />
           <label className="field-label" htmlFor="situation">
             상황 (선택)
@@ -390,9 +381,7 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
           {matches.length > 0 && (
             <SimilarRecords
               matches={matches}
-              applyingId={applyingId}
-              busy={searchPending || saving || applyingId !== null || seriesChoice === null}
-              error={applyError}
+              busy={searchPending || saving || seriesChoice === null}
               onApply={applyMatch}
             />
           )}
@@ -402,7 +391,7 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
               <button
                 type="button"
                 className="btn-ask-ai"
-                disabled={!message || seriesChoice === null || applyingId !== null}
+                disabled={!message || seriesChoice === null}
                 onClick={askAi}
               >
                 해당 없음 → AI에게 묻기
@@ -410,9 +399,9 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
             </div>
           )}
           {!locked && seriesChoice === null && <p className="hint">시리즈 이름을 확인해 주세요.</p>}
-          {locked && (loading || result) && !saved && (
+          {locked && (loading || result || applied) && !saved && (
             <p className="hint">
-              {loading ? 'AI가 분석하는 중이에요.' : '분석이 끝났어요.'} 결과는 위의 &quot;AI 제안 → 시도 기록&quot; 탭에서 볼 수 있어요.
+              {loading ? 'AI가 분석하는 중이에요.' : result ? '분석이 끝났어요.' : '기존 기록의 방법을 써 보는 중이에요.'} 결과는 위의 &quot;AI 제안 → 시도 기록&quot; 탭에서 볼 수 있어요.
             </p>
           )}
         </section>
@@ -456,7 +445,8 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
                 <p className="attempt-notice">시도는 화면에 모아 뒀어요. &quot;기록 저장&quot;을 누르면 함께 저장돼요.</p>
               )}
               {result && <AiSuggestionCard result={result} retrying={loading} onRetry={() => suggest(message, collected)} />}
-              {result && !loading && (
+              {applyingFirst && <AppliedRecordCard match={applied} />}
+              {(applyingFirst || (result && !loading)) && (
                 <AttemptForm
                   key={collected.length + 1}
                   seq={existingAttempts.length + collected.length + 1}
@@ -464,6 +454,9 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
                   error={saveError}
                   onSave={saveRecord}
                   onNext={nextSuggestion}
+                  initialAction={applyingFirst ? (appliedAction ?? undefined) : undefined}
+                  actionReadOnly={applyingFirst}
+                  initialSummary={applyingFirst ? applied.summary : undefined}
                 />
               )}
             </>
@@ -494,6 +487,33 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
         </section>
       )}
     </>
+  )
+}
+
+// "이 방법 써 보기"로 고른 기존 기록. 아직 저장 전이라는 것을 보여 주려고 기존 similar-card 모양을 다시 쓴다 (D-128)
+function AppliedRecordCard({ match }: { match: SimilarError }) {
+  const title = keyLine(match.error_message).text || match.error_message
+  return (
+    <article className="similar-card" aria-label="써 보는 기존 기록">
+      <h3 className="similar-title" title={title}>
+        📂 기존 기록 #{match.id}의 방법을 써 보는 중
+      </h3>
+      <p className="similar-meta">{title}</p>
+      <p className="similar-solution">
+        💡 <strong>해결법:</strong> {match.summary}
+      </p>
+      <div className="similar-actions">
+        <Link
+          className="btn-secondary similar-diary-link"
+          to={`/records/${match.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="에러 일기 보기 (새 탭에서 열림)"
+        >
+          에러 일기 보기 ↗
+        </Link>
+      </div>
+    </article>
   )
 }
 

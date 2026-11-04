@@ -12,14 +12,20 @@ type Props = {
   onSave: (body: AttemptBody) => void
   // "해결 안 됨 → 다음 방법 제안받기": 이번 시도를 모아 두고 AI에게 다시 묻는다 (저장하지 않는다)
   onNext: (body: AttemptBody) => void
+  // 미리 채울 "무엇을 했나요?" — "이 방법 써 보기"의 시도 1 (D-128)
+  initialAction?: string
+  // true면 "무엇을 했나요?"를 고칠 수 없다 (적용 시도 문구 고정, D-128)
+  actionReadOnly?: boolean
+  // 미리 채울 한 줄 정리 — 원본 정리 복사, 고칠 수 있다 (D-128)
+  initialSummary?: string
 }
 
 const RESULTS: AttemptResult[] = ['solved', 'failed', 'partial']
 
-function AttemptForm({ seq, saving, error, onSave, onNext }: Props) {
-  const [action, setAction] = useState('')
+function AttemptForm({ seq, saving, error, onSave, onNext, initialAction, actionReadOnly, initialSummary }: Props) {
+  const [action, setAction] = useState(initialAction ?? '')
   const [result, setResult] = useState<AttemptResult | null>(null)
-  const [summary, setSummary] = useState('')
+  const [summary, setSummary] = useState(initialSummary ?? '')
 
   const solved = result === 'solved'
   // "해결됨"이면 한 줄 정리가 필수다 (D-026)
@@ -50,8 +56,10 @@ function AttemptForm({ seq, saving, error, onSave, onNext }: Props) {
         placeholder="예: response_mime_type 설정 추가하고 다시 실행"
         value={action}
         disabled={saving}
+        readOnly={actionReadOnly}
         onChange={(e) => setAction(e.target.value)}
       />
+      {actionReadOnly && <p className="hint">기존 기록의 방법을 그대로 해 봤는지 결과만 골라 주세요.</p>}
 
       <fieldset className="attempt-results" disabled={saving}>
         <legend className="field-label">결과</legend>

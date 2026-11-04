@@ -334,6 +334,8 @@ def create_error(
         raise _invalid("해결됨으로 저장하려면 한 줄 정리를 입력해 주세요.")  # A-006과 같은 문구 (D-026)
     reused_from_id = None
     if body.reused_from_id is not None:
+        if not solved:
+            raise _invalid("기존 기록의 방법으로 해결됐을 때만 원본과 연결할 수 있어요.")  # D-128
         try:
             reused_from_id = errors_repo.get_reuse_root_id(db, body.reused_from_id, user_id=user.id)
         except ValueError as exc:

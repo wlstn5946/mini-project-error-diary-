@@ -3,15 +3,13 @@ import { keyLine } from '../../errorText'
 import type { SimilarError } from './errorsApi'
 
 // 비슷한 기존 기록 (시안 에러해결창_예시.png ①). "재사용 N회" 배지는 같은 해결법을 묶은 카드에 단다 (D-121). "에러 일기 보기"는 대표 기록(뿌리)의 상세를 새 탭으로 연다. 입력 중인 내용을 지키기 위해서다 (D-127).
+// "이 방법 써 보기"는 저장하지 않고 시도 1로 시작한다 (D-128, D-069 변경).
 // "해당 없음 → AI에게 묻기" 버튼은 입력창 쪽(SolvePage)에 하나만 둔다 (D-064).
 // 목록은 유사도 높은 순으로 오고, 위 두 개만 보이며 나머지는 스크롤로 본다 (CSS .similar-list).
 
 type Props = {
   matches: SimilarError[]
-  // "이 방법 적용"을 처리 중인 기록 ID
-  applyingId: number | null
   busy: boolean
-  error: string | null
   onApply: (match: SimilarError) => void
 }
 
@@ -21,7 +19,7 @@ function shortDate(iso: string): string {
   return `${Number(month)}/${Number(day)}`
 }
 
-function SimilarRecords({ matches, applyingId, busy, error, onApply }: Props) {
+function SimilarRecords({ matches, busy, onApply }: Props) {
   return (
     <>
       <section className="similar-box" aria-labelledby="similar-title">
@@ -57,7 +55,7 @@ function SimilarRecords({ matches, applyingId, busy, error, onApply }: Props) {
                 </p>
                 <div className="similar-actions">
                   <button type="button" className="btn-apply" disabled={busy} onClick={() => onApply(m)}>
-                    {applyingId === m.id ? '적용 중…' : '✔ 같은 에러예요, 이 방법 적용'}
+                    ✔ 같은 에러예요, 이 방법 써 보기
                   </button>
                   {/* 새 탭: 같은 탭으로 이동하면 아직 저장하지 않은 입력이 사라진다 (D-127). 읽기만 하므로 busy여도 막지 않는다 */}
                   <Link
@@ -74,7 +72,6 @@ function SimilarRecords({ matches, applyingId, busy, error, onApply }: Props) {
             )
           })}
         </div>
-        {error && <p className="save-error">{error}</p>}
       </section>
     </>
   )
