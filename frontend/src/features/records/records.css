@@ -1054,3 +1054,25 @@ button.reuse-badge:hover {
 .record-item:focus-visible {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
+
+/* 목록 줄의 "이어서 해결" 버튼 (D-124). 줄 오른쪽 끝, 윗줄 높이에 맞춘다 */
+.record-continue {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+  /* 같은 줄의 배지(빨강·초록·주황·인디고·회색)와 겹치지 않도록 연한 청록을 쓴다. 이 버튼에만 쓰므로 index.css(공용)에 토큰을 더하지 않고 여기에 둔다 */
+  --continue-fg: #0b6b78;
+  --continue-bg: #e4f4f6;
+  border-color: transparent;
+  background: var(--continue-bg);
+  color: var(--continue-fg);
+}
+
+.record-continue:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--continue-fg) 14%, var(--continue-bg));
+}
+
+.record-row > .record-continue {
+  margin: 10px 20px 0 0;
+}
