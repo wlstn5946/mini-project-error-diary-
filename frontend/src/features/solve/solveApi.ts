@@ -21,6 +21,8 @@ export type Suggestion = {
   message: string | null
   // 프롬프트에 붙여 참고한 내 기록 (D-123)
   references: SuggestionReference[]
+  // Gemini로 보내기 전에 가린 민감 정보 개수 (D-125)
+  masked_count: number
 }
 
 export type SuggestionReference = { id: number; title: string; summary: string }
@@ -40,9 +42,9 @@ export async function requestSuggestion(errorMessage: string, previousAttempts: 
       UNAVAILABLE,
     )
     const data = (await res.json()) as Suggestion
-    return { ...data, references: data.references ?? [] }
+    return { ...data, references: data.references ?? [], masked_count: data.masked_count ?? 0 }
   } catch {
-    return { status: 'unavailable', confidence: null, cause: null, solutions: [], message: UNAVAILABLE, references: [] }
+    return { status: 'unavailable', confidence: null, cause: null, solutions: [], message: UNAVAILABLE, references: [], masked_count: 0 }
   }
 }
 
