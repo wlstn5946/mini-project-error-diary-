@@ -1,3 +1,4 @@
+import { keyLine } from '../../errorText'
 import { RESULT_LABELS } from '../solve/solveApi'
 import { STATUS_LABELS, type ErrorDetail } from './errorsApi'
 
@@ -7,9 +8,9 @@ import { STATUS_LABELS, type ErrorDetail } from './errorsApi'
 const TITLE_MAX = 80
 const FILE_TITLE_MAX = 50
 
-// 제목은 에러 메시지의 첫 줄 (목록·상세와 같은 규칙)
-function firstLine(message: string) {
-  return message.split('\n').find((line) => line.trim()) ?? message
+// 제목은 에러 메시지의 핵심 줄 (목록·상세와 같은 규칙, D-117). 핵심 줄이 없으면 원문이다.
+function titleOf(message: string) {
+  return keyLine(message).text || message
 }
 
 // 글자 수로 자른다. 이모지 같은 글자가 반으로 쪼개지지 않게 코드 포인트 단위로 센다.
@@ -60,7 +61,7 @@ function section(title: string, body: string | null | undefined) {
 
 export function toMarkdown(detail: ErrorDetail, now: Date = new Date()): string {
   const message = detail.error_message.replace(/\r\n?/g, '\n').trimEnd()
-  const title = truncate(firstLine(message).trim().replace(/\s+/g, ' '), TITLE_MAX)
+  const title = truncate(titleOf(message).trim().replace(/\s+/g, ' '), TITLE_MAX)
 
   const info = [`- 상태: ${STATUS_LABELS[detail.status]}`]
   if (detail.series) {
@@ -92,7 +93,7 @@ export function toMarkdown(detail: ErrorDetail, now: Date = new Date()): string 
 // "error-diary-{id}-{정리한 제목}.{ext}". 파일 이름에 못 쓰는 글자(: / \ * ? " < > |)·따옴표·공백·줄바꿈·제어 문자는 -로 바꾸고,
 // 연속된 -는 하나로, 제목 부분은 50자로 자른다. 제목이 비면 "error-diary-{id}.{ext}".
 export function exportFileName(detail: ErrorDetail, ext: 'md' | 'pdf'): string {
-  const cleaned = firstLine(detail.error_message)
+  const cleaned = titleOf(detail.error_message)
     .replace(/[\s:/\\*?"'<>|\p{Cc}]+/gu, '-')
     .replace(/^-+|-+$/g, '')
   const title = Array.from(cleaned).slice(0, FILE_TITLE_MAX).join('').replace(/-+$/g, '')

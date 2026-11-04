@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.error_text import key_line
 from app.models import ErrorRecord, Series, Tag, TagAlias, User
 from app.repositories import attempts as attempts_repo
 from app.repositories import errors as errors_repo
@@ -169,6 +170,8 @@ class SimilarErrorResponse(BaseModel):
     id: int
     error_message: str
     similarity: int
+    # 핵심 줄 비교 값이 전체 비교 값보다 클 때만 key_line, 같거나 작으면 full (D-118)
+    matched_by: Literal["full", "key_line"]
     summary: str
     attempt_count: int
     tags: list[NamedItem]
@@ -199,15 +202,25 @@ def search_similar_errors(
     if not query:
         raise _invalid("에러 메시지를 입력해 주세요.")
 
-    matched: list[tuple[int, ErrorRecord]] = []
+    # 전체 비교와 핵심 줄 비교(D-117) 중 높은 값을 유사도로 쓴다. 핵심 줄이 비어 있으면 핵심 줄 비교는 하지 않는다. (D-118)
+    query_key = _normalize_for_compare(key_line(body.error_message)[0])
+
+    matched: list[tuple[int, Literal["full", "key_line"], ErrorRecord]] = []
     for error in errors_repo.list_resolved_errors(db, user_id=user.id):
         percent = _similarity_percent(query, _normalize_for_compare(error.error_message))
+        matched_by: Literal["full", "key_line"] = "full"
+        if query_key:
+            other_key = _normalize_for_compare(key_line(error.error_message)[0])
+            if other_key:
+                key_percent = _similarity_percent(query_key, other_key)
+                if key_percent is not None and (percent is None or key_percent > percent):
+                    percent, matched_by = key_percent, "key_line"
         if percent is not None:
-            matched.append((percent, error))
-    # 유사도 높은 순. 같으면 최근에 만든(id가 큰) 기록이 먼저다.
-    matched.sort(key=lambda item: (-item[0], -item[1].id))
+            matched.append((percent, matched_by, error))
+    # 유사도 높은 순. 같으면 최근에 만든(id가 큰) 기록이 먼저다. (D-040)
+    matched.sort(key=lambda item: (-item[0], -item[2].id))
 
-    error_ids = [error.id for _, error in matched]
+    error_ids = [error.id for _, _, error in matched]
     tags_by_error = errors_repo.get_tags_by_error_ids(db, error_ids, user_id=user.id)
     attempt_counts = attempts_repo.count_by_error_ids(db, error_ids)  # error_ids는 위에서 내 기록으로만 모았다
     return [
@@ -215,12 +228,13 @@ def search_similar_errors(
             id=error.id,
             error_message=error.error_message,
             similarity=percent,
+            matched_by=matched_by,
             summary=error.summary or "",
             attempt_count=attempt_counts.get(error.id, 0),
             tags=[NamedItem.model_validate(tag) for tag in tags_by_error.get(error.id, [])],
             resolved_at=error.resolved_at or error.created_at,
         )
-        for percent, error in matched
+        for percent, matched_by, error in matched
     ]
 
 

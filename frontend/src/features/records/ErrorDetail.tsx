@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import ErrorMessageView from '../../components/ErrorMessageView'
+import { keyLine } from '../../errorText'
 import { RESULT_LABELS } from '../solve/solveApi'
 import { STATUS_LABELS, type ErrorDetail as Detail } from './errorsApi'
 
@@ -12,11 +13,6 @@ type Props = {
   actions?: ReactNode
   // "✨ AI 피드백" 칸. 한 줄 정리 아래에 둔다 (D-064). 상태를 가진 쪽(페이지)이 채운다.
   feedbackSection?: ReactNode
-}
-
-// 제목은 에러 메시지의 첫 줄 (목록과 같은 규칙)
-function firstLine(message: string) {
-  return message.split('\n').find((line) => line.trim()) ?? message
 }
 
 // "2026-10-28T14:17:00+09:00" → "10월 28일 14:17". 한국 시간 문자열(D-015)을 그대로 잘라 쓴다.
@@ -46,6 +42,8 @@ type TimelineEntry =
   | { kind: 'reuse'; time: string; reuse: Detail['reuses'][number] }
 
 function ErrorDetail({ detail, actions, feedbackSection }: Props) {
+  // 제목·타임라인의 에러는 핵심 줄(D-117). 핵심 줄이 없으면 원문이다.
+  const title = keyLine(detail.error_message).text || detail.error_message
   const entries: TimelineEntry[] = [
     ...detail.attempts.map((attempt): TimelineEntry => ({ kind: 'attempt', time: attempt.created_at, attempt })),
     ...detail.reuses.map((reuse): TimelineEntry => ({ kind: 'reuse', time: reuse.created_at, reuse })),
@@ -54,7 +52,7 @@ function ErrorDetail({ detail, actions, feedbackSection }: Props) {
     <article className="detail">
       <header className="detail-header">
         <span className={`status-badge ${detail.status}`}>{STATUS_LABELS[detail.status]}</span>
-        <h2 className="detail-title">{firstLine(detail.error_message)}</h2>
+        <h2 className="detail-title">{title}</h2>
       </header>
       <p className="record-meta detail-meta">
         <span>{timeLabel(detail.created_at)} 등록</span>
@@ -83,7 +81,7 @@ function ErrorDetail({ detail, actions, feedbackSection }: Props) {
         <ol className="timeline">
           <li className="timeline-item start">
             <span className="timeline-time">{timeLabel(detail.created_at)} · 에러 발생</span>
-            <span className="timeline-text">{firstLine(detail.error_message)}</span>
+            <span className="timeline-text">{title}</span>
           </li>
           {entries.map((entry) =>
             entry.kind === 'attempt' ? (

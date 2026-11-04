@@ -147,6 +147,8 @@ export type SimilarError = {
   error_message: string
   // 0~100 (%)
   similarity: number
+  // 유사도를 전체 비교로 얻었으면 full, 핵심 줄 비교 값이 더 커서 얻었으면 key_line (D-118)
+  matched_by: 'full' | 'key_line'
   // 내 한 줄 정리 = 해결법
   summary: string
   attempt_count: number
