@@ -303,18 +303,32 @@ def update_error(
 
 
 def delete_error(db: Session, error: ErrorRecord, *, user_id: int) -> None:
-    """기록을 지운다 (D-043). 외래 키 때문에 자식의 reused_from_id를 NULL로 바꾼 뒤 attempts → error_tags → errors 순서로 지운다.
-    CASCADE는 쓰지 않는다. (D-044, D-080)
+    """기록을 지운다 (D-043). 자식 처리를 먼저 하고 attempts → error_tags → errors 순서로 지운다. CASCADE는 쓰지 않는다. (D-044)
 
-    원본을 지워도 재사용 기록은 남는다. 쓰이지 않게 된 태그·시리즈도 남긴다. (D-046)
+    원본(뿌리)을 지우면 남은 재사용 기록 중 가장 오래된 것(created_at, 같으면 id 작은 것)이 새 뿌리가 된다:
+    새 뿌리는 reused_from_id를 NULL로, 나머지는 새 뿌리를 가리키게 바꾼다. 재사용 기록이 없으면 하는 일이 없다. (D-121, D-080 변경)
+    쓰이지 않게 된 태그·시리즈도 남긴다. (D-046)
     커밋은 호출하는 쪽에서 한다. 중간에 실패하면 커밋 전이라 아무것도 지워지지 않는다.
     """
     assert_owner(error, user_id)
-    db.execute(
-        update(ErrorRecord)
+    new_root = db.scalars(
+        select(ErrorRecord)
         .where(ErrorRecord.user_id == user_id, ErrorRecord.reused_from_id == error.id)
-        .values(reused_from_id=None)
-    )
+        .order_by(ErrorRecord.created_at, ErrorRecord.id)
+        .limit(1)
+    ).first()
+    if new_root is not None:
+        # 나머지를 먼저 새 뿌리로 옮기고 새 뿌리를 비운다. 새 뿌리가 자기 자신을 가리키는 순간이 없게 하는 순서다.
+        db.execute(
+            update(ErrorRecord)
+            .where(
+                ErrorRecord.user_id == user_id,
+                ErrorRecord.reused_from_id == error.id,
+                ErrorRecord.id != new_root.id,
+            )
+            .values(reused_from_id=new_root.id)
+        )
+        db.execute(update(ErrorRecord).where(ErrorRecord.id == new_root.id).values(reused_from_id=None))
     attempts_repo.delete_by_error_id(db, error.id)  # attempts에는 user_id가 없다. 위에서 에러 소유를 확인했다. (D-086)
     db.execute(delete(ErrorTag).where(ErrorTag.error_id == error.id))
     db.delete(error)

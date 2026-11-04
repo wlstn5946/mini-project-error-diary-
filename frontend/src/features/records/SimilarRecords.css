@@ -59,6 +59,13 @@
   color: var(--ink-sub);
 }
 
+/* 재사용 N회 (D-121). 내 기록의 "재사용 N" 배지(.reuse-badge)와 같은 연한 남색이라 두 화면이 같게 보인다 */
+.similar-badge.reuse {
+  background: var(--info-bg);
+  color: var(--info-fg);
+  font-weight: 600;
+}
+
 .similar-title {
   margin: 0;
   overflow: hidden;

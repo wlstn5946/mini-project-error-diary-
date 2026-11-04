@@ -176,6 +176,8 @@ class SimilarErrorResponse(BaseModel):
     attempt_count: int
     tags: list[NamedItem]
     resolved_at: str
+    # 이 기록(뿌리)을 가리키는 재사용 기록 수. 내 기록의 "재사용 N"과 같은 값이다. (D-121)
+    reuse_count: int
 
 
 def _normalize_for_compare(text: str) -> str:
@@ -193,7 +195,7 @@ def _similarity_percent(query: str, other: str) -> int | None:
     return percent if percent >= MIN_SIMILARITY else None
 
 
-# A-003 비슷한 기존 기록 검색 (R-002, D-040). 해결된 기록만, 유사도 높은 순. 저장하거나 바꾸지 않는다.
+# A-003 비슷한 기존 기록 검색 (R-002, D-040, D-121). 해결된 기록만, 뿌리 기준으로 묶어 카드 1장, 유사도 높은 순. 저장하거나 바꾸지 않는다.
 @router.post("/errors/search", response_model=list[SimilarErrorResponse])
 def search_similar_errors(
     body: SimilarSearchRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
@@ -205,8 +207,11 @@ def search_similar_errors(
     # 전체 비교와 핵심 줄 비교(D-117) 중 높은 값을 유사도로 쓴다. 핵심 줄이 비어 있으면 핵심 줄 비교는 하지 않는다. (D-118)
     query_key = _normalize_for_compare(key_line(body.error_message)[0])
 
-    matched: list[tuple[int, Literal["full", "key_line"], ErrorRecord]] = []
-    for error in errors_repo.list_resolved_errors(db, user_id=user.id):
+    # 해결된 기록 전부(재사용 기록 포함)를 비교하고, 뿌리(reused_from_id or id) 기준으로 묶는다. (D-121)
+    candidates = errors_repo.list_resolved_errors(db, user_id=user.id)
+    by_id = {error.id: error for error in candidates}
+    groups: dict[int, list[tuple[int, Literal["full", "key_line"], ErrorRecord]]] = {}
+    for error in candidates:
         percent = _similarity_percent(query, _normalize_for_compare(error.error_message))
         matched_by: Literal["full", "key_line"] = "full"
         if query_key:
@@ -216,13 +221,24 @@ def search_similar_errors(
                 if key_percent is not None and (percent is None or key_percent > percent):
                     percent, matched_by = key_percent, "key_line"
         if percent is not None:
-            matched.append((percent, matched_by, error))
-    # 유사도 높은 순. 같으면 최근에 만든(id가 큰) 기록이 먼저다. (D-040)
+            groups.setdefault(error.reused_from_id or error.id, []).append((percent, matched_by, error))
+
+    # 묶음마다: 유사도·matched_by는 묶음 안 최고값(같으면 id가 큰 기록), 카드 내용은 뿌리(대표 기록)의 것이다.
+    matched: list[tuple[int, Literal["full", "key_line"], ErrorRecord]] = []
+    for root_id, members in groups.items():
+        best_percent, best_matched_by, _ = max(members, key=lambda item: (item[0], item[2].id))
+        rep = by_id.get(root_id) or errors_repo.get_owned_error(db, user_id=user.id, error_id=root_id)
+        if rep is None or rep.status != "resolved":
+            # 이론상 없는 경우: 묶음 안에서 가장 오래된 기록을 대표로 쓴다
+            rep = min((item[2] for item in members), key=lambda e: (e.created_at, e.id))
+        matched.append((best_percent, best_matched_by, rep))
+    # 유사도 높은 순. 같으면 최근에 만든(id가 큰) 대표 기록이 먼저다. (D-040)
     matched.sort(key=lambda item: (-item[0], -item[2].id))
 
     error_ids = [error.id for _, _, error in matched]
     tags_by_error = errors_repo.get_tags_by_error_ids(db, error_ids, user_id=user.id)
     attempt_counts = attempts_repo.count_by_error_ids(db, error_ids)  # error_ids는 위에서 내 기록으로만 모았다
+    reuse_counts = errors_repo.count_reuses_by_ids(db, error_ids, user_id=user.id)
     return [
         SimilarErrorResponse(
             id=error.id,
@@ -233,6 +249,7 @@ def search_similar_errors(
             attempt_count=attempt_counts.get(error.id, 0),
             tags=[NamedItem.model_validate(tag) for tag in tags_by_error.get(error.id, [])],
             resolved_at=error.resolved_at or error.created_at,
+            reuse_count=reuse_counts.get(error.id, 0),
         )
         for percent, matched_by, error in matched
     ]
