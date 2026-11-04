@@ -4,6 +4,7 @@
 이번 범위는 A-005(AI 해결책 제안, previous_attempts 포함), A-006(시도 기록), A-007(한 줄 정리 수정), A-016(AI 피드백)을 구현한다.
 SQL은 이 파일에 쓰지 않고 backend/app/repositories/에만 둔다. (D-016)
 프롬프트·응답 JSON 형식: docs/PROMPTS/PROMPTS_2.md
+계정별 분리 (D-086, D-087, D-105): A-006, A-007, A-016은 get_owned_error로 소유를 확인하고 남의 기록은 404다. A-005는 DB를 읽지 않아 로그인(전역 의존성)만 요구한다.
 """
 
 import logging
@@ -20,9 +21,11 @@ from sqlalchemy.orm import Session
 
 from app.config import GEMINI_API_KEY
 from app.db import get_db
+from app.models import User
 from app.repositories import attempts as attempts_repo
 from app.repositories import errors as errors_repo
 from app.repositories import series as series_repo  # A-006 응답용 읽기 (팀원 1 파일, 함수 추가 없음)
+from app.security import get_current_user
 
 router = APIRouter(tags=["solve"])
 logger = logging.getLogger(__name__)
@@ -237,8 +240,10 @@ class SavedErrorResponse(BaseModel):
 # 마지막 시도가 solved이면 같은 트랜잭션에서 해결 처리까지 하고(D-026), 아니면 미해결로 둔다(D-029).
 # 해결된 에러에는 시도를 추가하지 않는다(D-032).
 @router.post("/errors/{error_id}/attempts", response_model=SavedErrorResponse, status_code=201)
-def create_attempts(error_id: int, body: AttemptsCreateRequest, db: Session = Depends(get_db)) -> SavedErrorResponse:
-    error = errors_repo.get_error(db, error_id)
+def create_attempts(
+    error_id: int, body: AttemptsCreateRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> SavedErrorResponse:
+    error = errors_repo.get_owned_error(db, user_id=user.id, error_id=error_id)
     if error is None:
         raise HTTPException(status_code=404, detail="없는 에러예요.")
     if error.status == "resolved":
@@ -258,7 +263,7 @@ def create_attempts(error_id: int, body: AttemptsCreateRequest, db: Session = De
     reused_root_id = None
     if body.reused_from_id is not None:
         try:
-            reused_root_id = errors_repo.get_reuse_root_id(db, body.reused_from_id, error.id)
+            reused_root_id = errors_repo.get_reuse_root_id(db, body.reused_from_id, error.id, user_id=user.id)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
 
@@ -267,11 +272,11 @@ def create_attempts(error_id: int, body: AttemptsCreateRequest, db: Session = De
     for seq, (action, result) in enumerate(new_attempts, first_seq):
         attempts_repo.create_attempt(db, error.id, seq, action, result)
     if solved:
-        errors_repo.mark_resolved(db, error, summary)
+        errors_repo.mark_resolved(db, error, summary, user_id=user.id)
     elif summary is not None:
-        errors_repo.set_summary(db, error, summary)  # 정리를 비워 보냈으면 기존 정리를 그대로 둔다 (D-067, D-072)
+        errors_repo.set_summary(db, error, summary, user_id=user.id)  # 정리를 비워 보냈으면 기존 정리를 그대로 둔다 (D-067, D-072)
     if reused_root_id is not None:
-        errors_repo.fill_reused_from(db, error, reused_root_id)  # 팀원 1 파일 함수 추가 (D-080)
+        errors_repo.fill_reused_from(db, error, reused_root_id, user_id=user.id)  # 팀원 1 파일 함수 추가 (D-080)
     try:
         db.commit()
     except IntegrityError:
@@ -279,8 +284,8 @@ def create_attempts(error_id: int, body: AttemptsCreateRequest, db: Session = De
         db.rollback()
         raise HTTPException(status_code=409, detail="같은 시도가 동시에 저장됐어요. 다시 시도해 주세요.")
 
-    series = series_repo.get_series(db, error.series_id) if error.series_id is not None else None
-    tags = errors_repo.get_tags_by_error_ids(db, [error.id]).get(error.id, [])
+    series = series_repo.get_owned_series(db, user_id=user.id, series_id=error.series_id) if error.series_id is not None else None
+    tags = errors_repo.get_tags_by_error_ids(db, [error.id], user_id=user.id).get(error.id, [])
     return SavedErrorResponse(
         id=error.id,
         error_message=error.error_message,
@@ -310,14 +315,16 @@ class SummaryResponse(BaseModel):
 # A-007 한 줄 정리 수정 (R-004, D-047, D-064). 해결된 에러는 비울 수 없고, 미해결 에러는 비우면 null로 저장한다.
 # 피드백은 여기서 다시 받지 않는다. 화면이 저장 뒤 A-016을 따로 부른다.
 @router.patch("/errors/{error_id}/summary", response_model=SummaryResponse)
-def update_summary(error_id: int, body: SummaryUpdateRequest, db: Session = Depends(get_db)) -> SummaryResponse:
-    error = errors_repo.get_error(db, error_id)
+def update_summary(
+    error_id: int, body: SummaryUpdateRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> SummaryResponse:
+    error = errors_repo.get_owned_error(db, user_id=user.id, error_id=error_id)
     if error is None:
         raise HTTPException(status_code=404, detail="에러 기록을 찾을 수 없어요.")
     summary = body.summary.strip() or None
     if summary is None and error.status == "resolved":
         raise HTTPException(status_code=422, detail="해결된 기록은 한 줄 정리를 비울 수 없어요.")
-    errors_repo.set_summary(db, error, summary)
+    errors_repo.set_summary(db, error, summary, user_id=user.id)
     db.commit()
     return SummaryResponse.model_validate(error)
 
@@ -337,8 +344,10 @@ class FeedbackResponse(BaseModel):
 # A-016 AI 피드백 (Q-003, D-064). 저장된 에러·시도·한 줄 정리로 피드백 1~2문장을 만들어 errors.ai_feedback에 저장한다.
 # 실패해도 200 + unavailable이고, 이미 저장된 피드백은 바꾸지 않는다.
 @router.post("/errors/{error_id}/feedback", response_model=FeedbackResponse)
-def create_feedback(error_id: int, db: Session = Depends(get_db)) -> FeedbackResponse:
-    error = errors_repo.get_error(db, error_id)
+def create_feedback(
+    error_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> FeedbackResponse:
+    error = errors_repo.get_owned_error(db, user_id=user.id, error_id=error_id)
     if error is None:
         raise HTTPException(status_code=404, detail="에러 기록을 찾을 수 없어요.")
     saved_attempts = attempts_repo.list_attempts(db, error.id)
@@ -358,10 +367,10 @@ def create_feedback(error_id: int, db: Session = Depends(get_db)) -> FeedbackRes
     if result is None:
         return FeedbackResponse(status="unavailable", message=FEEDBACK_UNAVAILABLE_MESSAGE)
 
-    error = errors_repo.get_error(db, error_id)
+    error = errors_repo.get_owned_error(db, user_id=user.id, error_id=error_id)
     if error is None:  # 기다리는 사이 기록이 지워졌다
         raise HTTPException(status_code=404, detail="에러 기록을 찾을 수 없어요.")
     feedback = result.feedback.strip()
-    errors_repo.set_feedback(db, error, feedback)
+    errors_repo.set_feedback(db, error, feedback, user_id=user.id)
     db.commit()
     return FeedbackResponse(status="ok", feedback=feedback)
