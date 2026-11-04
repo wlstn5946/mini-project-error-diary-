@@ -439,6 +439,42 @@
   margin-top: 16px;
 }
 
+/* 확인 창 왼쪽 보조 버튼 (태그 합치기의 "방향 바꾸기") */
+.confirm-lead {
+  margin-right: auto;
+}
+
+/* 태그 합치기 확인 창의 두 줄 표 */
+.merge-table {
+  width: 100%;
+  margin: 4px 0 12px;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.merge-table th,
+.merge-table td {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.merge-table th {
+  width: 96px;
+  color: var(--ink-sub);
+  font-weight: 400;
+}
+
+.merge-tag {
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.merge-count {
+  color: var(--ink-sub);
+  text-align: right;
+}
+
 /* 내 기록 제목 줄과 "⚙ 관리" 모달 */
 .records-header {
   display: flex;
@@ -513,6 +549,74 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* 드래그 손잡이 (D-113). 손잡이만 끌 수 있다 */
+.manage-handle {
+  color: var(--ink-faint);
+  cursor: grab;
+  letter-spacing: -2px;
+  user-select: none;
+}
+
+.manage-handle:active {
+  cursor: grabbing;
+}
+
+/* 태그 이름 글자도 끌 수 있다. 줄 전체가 아니라 글자 부분만 */
+.manage-name-text {
+  align-self: flex-start;
+}
+
+.manage-name-text.is-draggable {
+  cursor: grab;
+}
+
+.manage-name-text.is-draggable:active {
+  cursor: grabbing;
+}
+
+/* 끌고 있는 글자가 pointer-events: none을 물려받아 끌기가 끊기지 않게 한다 */
+.manage-list.is-dragging-list .manage-name-text {
+  pointer-events: auto;
+}
+
+/* 끄는 동안: 끄는 줄은 흐리게, 놓을 곳은 강조 테두리·바탕과 안내 */
+.manage-row {
+  position: relative;
+  transition:
+    background-color 120ms var(--ease),
+    opacity 120ms var(--ease);
+}
+
+.manage-row.is-dragging {
+  opacity: 0.5;
+}
+
+.manage-row.is-drop-target {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  border-radius: var(--radius-control);
+}
+
+/* 줄 안의 자식 요소가 끌기 이벤트를 가로채 표시가 깜빡이지 않게 한다 */
+.manage-list.is-dragging-list .manage-row > *:not(.manage-handle) {
+  pointer-events: none;
+}
+
+.manage-drop-hint {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  color: var(--accent);
+  font-size: var(--fs-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .manage-row {
+    transition: none;
+  }
+}
+
 .manage-name {
   display: flex;
   flex: 1;
@@ -528,11 +632,50 @@
   font-weight: 400;
 }
 
+/* 이름 아래 별칭 칩과 × 버튼 (D-114) */
+.manage-alias {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 8px;
+}
+
+.manage-alias-remove {
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.manage-alias-remove:hover {
+  color: var(--danger-fg);
+}
+
 .manage-count {
   color: var(--text-sub);
   font-size: var(--fs-sm);
 }
 
+
+/* "합치기"를 누르면 줄 아래에 나오는 선택칸 */
+.manage-merge {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-control);
+  background: var(--surface-sub);
+}
+
+.manage-merge-label {
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
+}
 
 .manage-edit {
   display: flex;

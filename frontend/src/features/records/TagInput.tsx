@@ -1,5 +1,5 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
-import { fetchTags, type Tag } from './tagsApi'
+import { fetchTags, TAG_NAME_MAX, TAG_NAME_TOO_LONG, type Tag } from './tagsApi'
 import './TagInput.css'
 
 // 에러 입력 시 태그 지정 (R-001, D-006). 시안 에러해결창_예시.png ①의 "태그 (최대 5개)" 부분.
@@ -27,6 +27,8 @@ type Status = 'loading' | 'ready' | 'error'
 // id가 null이면 아직 DB에 없는 새 태그
 type Chip = { id: number | null; name: string }
 type Notice = { text: string; error: boolean }
+// 자동 완성 제안: 태그와, 별칭으로 찾았다면 맞은 별칭 (D-114)
+type Suggestion = { tag: Tag; alias: string | null }
 
 const MAX_TAGS = 5 // D-022
 const MAX_SUGGESTIONS = 8
@@ -67,9 +69,20 @@ function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [] 
 
   const key = tagKey(text)
   const chosenKeys = new Set(chips.map((c) => tagKey(c.name)))
-  const suggestions = key && !disabled
-    ? allTags.filter((t) => tagKey(t.name).includes(key) && !chosenKeys.has(tagKey(t.name))).slice(0, MAX_SUGGESTIONS)
-    : []
+  const chosenIds = new Set(chips.flatMap((c) => (c.id === null ? [] : [c.id])))
+  // 태그 이름뿐 아니라 별칭에서도 "포함" 검색한다. 별칭으로 찾은 제안은 맞은 별칭을 괄호로 보여준다. (D-114)
+  // 고르면 별칭이 아니라 원래 태그(name)가 붙는다. 이미 붙은 태그는 뺀다.
+  const suggestions: Suggestion[] =
+    key && !disabled
+      ? allTags
+          .filter((t) => !chosenIds.has(t.id) && !chosenKeys.has(tagKey(t.name)))
+          .flatMap((t): Suggestion[] => {
+            if (tagKey(t.name).includes(key)) return [{ tag: t, alias: null }]
+            const hit = t.aliases.find((a) => tagKey(a.name).includes(key))
+            return hit ? [{ tag: t, alias: hit.name }] : []
+          })
+          .slice(0, MAX_SUGGESTIONS)
+      : []
 
   // 같은 태그는 한 번만, 이미 고른 태그는 뺀다. 최대 개수에 이미 찼으면 보여주지 않는다
   const recommended =
@@ -89,7 +102,13 @@ function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [] 
     const name = normalizeTag(raw)
     if (!name) return
     const nameKey = name.toLowerCase()
-    if (chosenKeys.has(nameKey)) {
+    // 기존 태그와 대소문자만 다르면 기존 표기로 합치고(python → Python), 별칭과 같으면 원래 태그로 바꾼다(파이썬 → Python).
+    // 서버(A-002·A-010)도 같은 규칙으로 한 번 더 바꾸므로 여기는 편의용이다. (D-114)
+    const existing =
+      allTags.find((t) => tagKey(t.name) === nameKey) ??
+      allTags.find((t) => t.aliases.some((a) => tagKey(a.name) === nameKey))
+    // 원래 태그 기준으로 이미 붙은 태그인지 본다
+    if ((existing && chosenIds.has(existing.id)) || chosenKeys.has(existing ? tagKey(existing.name) : nameKey)) {
       setText('')
       setActive(-1)
       setNotice({ text: '이미 추가한 태그예요.', error: false })
@@ -99,8 +118,11 @@ function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [] 
       setNotice({ text: `태그는 최대 ${MAX_TAGS}개까지 넣을 수 있어요.`, error: true })
       return
     }
-    // 기존 태그와 대소문자만 다르면 기존 표기로 합친다 (python → Python)
-    const existing = allTags.find((t) => tagKey(t.name) === nameKey)
+    // 새 태그는 20자까지 (D-115). 이미 있는 태그·별칭을 고르는 것은 길이와 상관없다. 입력값은 그대로 둔다.
+    if (!existing && name.length > TAG_NAME_MAX) {
+      setNotice({ text: TAG_NAME_TOO_LONG, error: true })
+      return
+    }
     update([...chips, existing ? { id: existing.id, name: existing.name } : { id: null, name }])
     setText('')
     setActive(-1)
@@ -124,7 +146,7 @@ function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [] 
       setActive((i) => (i <= 0 ? suggestions.length - 1 : i - 1))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      addTag(active >= 0 && suggestions[active] ? suggestions[active].name : text)
+      addTag(active >= 0 && suggestions[active] ? suggestions[active].tag.name : text)
     } else if (e.key === 'Backspace' && text === '' && chips.length > 0) {
       removeAt(chips.length - 1)
     }
@@ -193,7 +215,7 @@ function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [] 
 
       {showSuggestions && (
         <ul id="tag-suggestions" className="tag-suggestions" role="listbox">
-          {suggestions.map((t, i) => (
+          {suggestions.map(({ tag: t, alias }, i) => (
             <li
               key={t.id}
               id={`tag-suggestion-${i}`}
@@ -204,7 +226,7 @@ function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [] 
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => addTag(t.name)}
             >
-              {t.name}
+              {alias ? `${t.name} (${alias})` : t.name}
             </li>
           ))}
         </ul>

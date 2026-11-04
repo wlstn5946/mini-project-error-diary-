@@ -76,6 +76,27 @@ class Tag(Base):
     created_at: Mapped[str] = mapped_column(String, default=now_kst)
 
 
+class TagAlias(Base):
+    """태그의 별칭. 합치기(A-022)나 태그 관리(A-023)로 만든다. 화면에 별도 태그로 보이지 않는다. (D-112 ~ D-114)
+
+    새 테이블이라 init_db()의 create_all이 만든다. 태그 name_key와 alias_key가 겹치지 않는 것은
+    UNIQUE로 막을 수 없어 repository 코드가 확인한다. (D-114)
+    """
+
+    __tablename__ = "tag_aliases"
+    # 같은 사용자 안에서만 alias_key가 겹치지 못한다.
+    __table_args__ = (UniqueConstraint("user_id", "alias_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    tag_id: Mapped[int] = mapped_column(ForeignKey("tags.id"))
+    # 표기 그대로 (예: py)
+    alias: Mapped[str] = mapped_column(String)
+    # 비교용. 정규화한 alias의 소문자 (예: py)
+    alias_key: Mapped[str] = mapped_column(String)
+    created_at: Mapped[str] = mapped_column(String, default=now_kst)
+
+
 class ErrorRecord(Base):
     """에러 기록. 새 에러로 확정되는 순간 미해결로 저장한다. (D-024, D-025)"""
 
