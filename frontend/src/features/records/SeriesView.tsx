@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { ApiError } from '../../api'
 import type { ErrorListItem } from './errorsApi'
 import { RecordItemContent } from './RecordList'
+import { exportSeriesMarkdown } from './exportActions'
 import ConfirmDialog from './ConfirmDialog'
 import SeriesCreateForm from './SeriesCreateForm'
 import SeriesEditForm from './SeriesEditForm'
@@ -30,6 +31,7 @@ type ErrorsResult = { key: string; items: ErrorListItem[] | null }
 
 const MOVE_FAILED = '순서를 바꾸지 못했어요. 다시 시도해 주세요.'
 const GONE = '이미 삭제된 항목이에요.'
+const EXPORT_FAILED = '일부 기록을 불러오지 못해 내보내지 않았어요. 다시 시도해 주세요.'
 
 type DetailProps = {
   series: Series
@@ -55,6 +57,12 @@ function SeriesDetail({ series, backTo, onSeriesChanged, onGone, onDeleted, onNe
   const deleteBusy = useRef(false)
   // 화살표를 빠르게 여러 번 눌러도 요청은 하나씩만 보낸다
   const busy = useRef(false)
+  // 시리즈 Markdown 내보내기 (D-119). progress가 있으면 내보내는 중
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const exportBusy = useRef(false)
+  const exportController = useRef<AbortController | null>(null)
+  const exporting = progress !== null
 
   const key = `${series.id}|${retry}`
   const loading = result?.key !== key
@@ -69,8 +77,28 @@ function SeriesDetail({ series, backTo, onSeriesChanged, onGone, onDeleted, onNe
     return () => controller.abort()
   }, [key, series.id])
 
+  // 다른 시리즈로 옮기거나 화면을 떠나면 진행 중인 내보내기를 취소한다 (안내 없음)
+  useEffect(() => () => exportController.current?.abort(), [])
+
+  async function exportMarkdown() {
+    if (exportBusy.current) return
+    exportBusy.current = true
+    const controller = new AbortController()
+    exportController.current = controller
+    setExportError(null)
+    setProgress({ done: 0, total: 0 })
+    try {
+      await exportSeriesMarkdown(series, (done, total) => !controller.signal.aborted && setProgress({ done, total }), controller.signal)
+    } catch {
+      if (!controller.signal.aborted) setExportError(EXPORT_FAILED)
+    } finally {
+      exportBusy.current = false
+      if (!controller.signal.aborted) setProgress(null)
+    }
+  }
+
   async function move(index: number, delta: -1 | 1) {
-    if (busy.current || result?.items == null) return
+    if (busy.current || exportBusy.current || result?.items == null) return
     const previous = result.items
     const target = index + delta
     if (target < 0 || target >= previous.length) return
@@ -131,7 +159,10 @@ function SeriesDetail({ series, backTo, onSeriesChanged, onGone, onDeleted, onNe
         </button>
       </header>
 
-      <div aria-live="polite">{moveError && <p className="manage-error">{moveError}</p>}</div>
+      <div aria-live="polite">
+        {moveError && <p className="manage-error">{moveError}</p>}
+        {exportError && <p className="manage-error">{exportError}</p>}
+      </div>
 
       {loading ? (
         <p className="record-state">불러오는 중…</p>
@@ -157,7 +188,7 @@ function SeriesDetail({ series, backTo, onSeriesChanged, onGone, onDeleted, onNe
                   type="button"
                   className="btn-secondary arrow-btn"
                   aria-label={`${index + 1}번째 기록을 위로`}
-                  disabled={moving || index === 0}
+                  disabled={moving || exporting || index === 0}
                   onClick={() => move(index, -1)}
                 >
                   ▲
@@ -166,7 +197,7 @@ function SeriesDetail({ series, backTo, onSeriesChanged, onGone, onDeleted, onNe
                   type="button"
                   className="btn-secondary arrow-btn"
                   aria-label={`${index + 1}번째 기록을 아래로`}
-                  disabled={moving || index === all.length - 1}
+                  disabled={moving || exporting || index === all.length - 1}
                   onClick={() => move(index, 1)}
                 >
                   ▼
@@ -194,7 +225,16 @@ function SeriesDetail({ series, backTo, onSeriesChanged, onGone, onDeleted, onNe
           </button>
           <button
             type="button"
+            className="btn-secondary manage-btn"
+            disabled={!result?.items?.length || loading || moving || exporting}
+            onClick={exportMarkdown}
+          >
+            {progress ? (progress.total ? `불러오는 중 ${progress.done}/${progress.total}` : '불러오는 중…') : '시리즈 Markdown 내려받기'}
+          </button>
+          <button
+            type="button"
             className="btn-danger manage-btn"
+            disabled={exporting}
             onClick={() => {
               setDeleteError(null)
               setConfirmingDelete(true)

@@ -1,6 +1,7 @@
 import { keyLine } from '../../errorText'
 import { RESULT_LABELS } from '../solve/solveApi'
 import { STATUS_LABELS, type ErrorDetail } from './errorsApi'
+import type { Series } from './seriesApi'
 
 // 에러 일기 내보내기: Markdown 본문과 파일 이름 (S-003, D-079 예정). 화면 코드와 섞지 않는 순수 함수만 둔다.
 // 내용은 화면이 이미 불러온 A-009 응답(detail)으로만 만든다. 저장하지 않은 편집 값은 들어오지 않는다.
@@ -54,17 +55,36 @@ function userText(text: string) {
 }
 
 // 값이 없는 칸은 칸째로 뺀다. 빈 문자열(공백뿐 포함)도 값이 없는 것으로 본다.
-function section(title: string, body: string | null | undefined) {
+function section(level: number, title: string, body: string | null | undefined) {
   const text = body?.trim()
-  return text ? [`## ${title}`, userText(text)] : []
+  return text ? [`${'#'.repeat(level)} ${title}`, userText(text)] : []
 }
 
-export function toMarkdown(detail: ErrorDetail, now: Date = new Date()): string {
-  const message = detail.error_message.replace(/\r\n?/g, '\n').trimEnd()
-  const title = truncate(titleOf(message).trim().replace(/\s+/g, ' '), TITLE_MAX)
+function normalizeMessage(detail: ErrorDetail) {
+  return detail.error_message.replace(/\r\n?/g, '\n').trimEnd()
+}
+
+function titleText(detail: ErrorDetail) {
+  return truncate(titleOf(normalizeMessage(detail)).trim().replace(/\s+/g, ' '), TITLE_MAX)
+}
+
+type BodyOptions = {
+  // 기록 제목의 # 개수. 항목은 level+1, 시도는 level+2로 한 단계씩 내려간다 (사용자 글은 건드리지 않는다)
+  level: number
+  // 제목 줄에 들어갈 글 (예: "제목" 또는 "3. 제목")
+  heading: string
+  // 정보 줄에 "- 시리즈: …"를 넣을지 (시리즈 내보내기에서는 파일 제목과 겹쳐 뺀다)
+  includeSeries: boolean
+}
+
+// 기록 하나의 본문 조각들(꼬리말 제외). 조각은 빈 줄 하나로 이어 붙인다.
+function recordBody(detail: ErrorDetail, { level, heading, includeSeries }: BodyOptions): string[] {
+  const message = normalizeMessage(detail)
+  const item = level + 1
+  const attemptLevel = level + 2
 
   const info = [`- 상태: ${STATUS_LABELS[detail.status]}`]
-  if (detail.series) {
+  if (includeSeries && detail.series) {
     const order = detail.series_order != null ? ` (${detail.series_order}번째)` : ''
     info.push(`- 시리즈: ${detail.series.name}${order}`)
   }
@@ -74,28 +94,67 @@ export function toMarkdown(detail: ErrorDetail, now: Date = new Date()): string 
 
   const attempts = [...detail.attempts]
     .sort((a, b) => a.seq - b.seq)
-    .map((a) => `### 시도 ${a.seq} · ${RESULT_LABELS[a.result]}\n${formatIso(a.created_at)}\n\n${userText(a.action)}`)
+    .map(
+      (a) =>
+        `${'#'.repeat(attemptLevel)} 시도 ${a.seq} · ${RESULT_LABELS[a.result]}\n${formatIso(a.created_at)}\n\n${userText(a.action)}`,
+    )
 
-  const blocks = [
-    `# ${title}`,
+  return [
+    `${'#'.repeat(level)} ${heading}`,
     info.join('\n'),
-    '## 에러 메시지',
+    `${'#'.repeat(item)} 에러 메시지`,
     codeBlock(message),
-    ...section('상황', detail.situation),
-    ...(attempts.length > 0 ? ['## 시도 기록', ...attempts] : []),
-    ...section('내 한 줄 정리', detail.summary),
-    ...section('AI 피드백', detail.ai_feedback),
-    `---\n\n에러 일기에서 내보냄 · ${formatDateTime(now)}`,
+    ...section(item, '상황', detail.situation),
+    ...(attempts.length > 0 ? [`${'#'.repeat(item)} 시도 기록`, ...attempts] : []),
+    ...section(item, '내 한 줄 정리', detail.summary),
+    ...section(item, 'AI 피드백', detail.ai_feedback),
   ]
+}
+
+function footer(now: Date) {
+  return `---\n\n에러 일기에서 내보냄 · ${formatDateTime(now)}`
+}
+
+export function toMarkdown(detail: ErrorDetail, now: Date = new Date()): string {
+  const blocks = [...recordBody(detail, { level: 1, heading: titleText(detail), includeSeries: true }), footer(now)]
   return `${blocks.join('\n\n')}\n`
+}
+
+// 시리즈 전체를 Markdown 하나로 (D-119). details는 시리즈 안 순서(A-008) 그대로여야 한다.
+export function seriesToMarkdown(series: Series, details: ErrorDetail[], now: Date = new Date()): string {
+  const resolved = details.filter((d) => d.status === 'resolved').length
+  const description = series.description?.trim()
+
+  const header = [
+    `# ${series.name}`,
+    ...(description ? [userText(description)] : []),
+    [`- 기록 ${details.length}개 (해결 ${resolved} · 미해결 ${details.length - resolved})`, `- 내보낸 날짜: ${formatDateTime(now)}`].join(
+      '\n',
+    ),
+    '## 목차',
+    details.map((d, i) => `${i + 1}. ${d.status === 'resolved' ? '✔' : '○'} ${titleText(d)}`).join('\n'),
+  ]
+  const records = details.map((d, i) =>
+    recordBody(d, { level: 2, heading: `${i + 1}. ${titleText(d)}`, includeSeries: false }).join('\n\n'),
+  )
+  const blocks = [header.join('\n\n'), ...records.map((r) => `---\n\n${r}`), footer(now)]
+  return `${blocks.join('\n\n')}\n`
+}
+
+// 파일 이름에 못 쓰는 글자(: / \ * ? " < > |)·따옴표·공백·줄바꿈·제어 문자는 -로 바꾸고, 연속된 -는 하나로, 50자로 자른다.
+function cleanFileTitle(text: string) {
+  const cleaned = text.replace(/[\s:/\\*?"'<>|\p{Cc}]+/gu, '-').replace(/^-+|-+$/g, '')
+  return Array.from(cleaned).slice(0, FILE_TITLE_MAX).join('').replace(/-+$/g, '')
+}
+
+export function seriesExportFileName(series: Series): string {
+  const title = cleanFileTitle(series.name)
+  return `error-diary-series-${series.id}${title ? `-${title}` : ''}.md`
 }
 
 // "error-diary-{id}-{정리한 제목}.{ext}". 파일 이름에 못 쓰는 글자(: / \ * ? " < > |)·따옴표·공백·줄바꿈·제어 문자는 -로 바꾸고,
 // 연속된 -는 하나로, 제목 부분은 50자로 자른다. 제목이 비면 "error-diary-{id}.{ext}".
 export function exportFileName(detail: ErrorDetail, ext: 'md' | 'pdf'): string {
-  const cleaned = titleOf(detail.error_message)
-    .replace(/[\s:/\\*?"'<>|\p{Cc}]+/gu, '-')
-    .replace(/^-+|-+$/g, '')
-  const title = Array.from(cleaned).slice(0, FILE_TITLE_MAX).join('').replace(/-+$/g, '')
+  const title = cleanFileTitle(titleOf(detail.error_message))
   return `error-diary-${detail.id}${title ? `-${title}` : ''}.${ext}`
 }
