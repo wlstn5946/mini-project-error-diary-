@@ -16,16 +16,20 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import ErrorRecord, Series, Tag, User
+from app.models import ErrorRecord, Series, Tag, TagAlias, User
 from app.repositories import attempts as attempts_repo
 from app.repositories import errors as errors_repo
 from app.repositories import series as series_repo
+from app.repositories import tag_aliases as aliases_repo
 from app.repositories import tags as tags_repo
 from app.security import get_current_user
 
 router = APIRouter(tags=["records"])
 
 MAX_TAGS = 5  # D-022
+MAX_TAG_NAME = 20  # 태그 이름과 별칭의 최대 글자 수(정규화한 뒤 센다). D-115
+TAG_NAME_TOO_LONG = f"태그 이름은 {MAX_TAG_NAME}자까지 쓸 수 있어요."
+ALIAS_TOO_LONG = f"별칭은 {MAX_TAG_NAME}자까지 쓸 수 있어요."
 MIN_SIMILARITY = 60  # 유사도(%)가 이 값 이상인 기록만 비슷한 기록으로 본다. (D-040)
 
 
@@ -63,17 +67,42 @@ class TagResponse(BaseModel):
     # 이 태그가 붙은 에러 수. 삭제 확인 창의 "N개 기록에서 빠져요"에 쓴다. (D-050)
     error_count: int
     created_at: str
+    # 이 태그의 별칭(이름순). 별칭이 없으면 빈 배열. (D-114)
+    aliases: list["AliasItem"] = []
 
 
-def _tag_response(tag: Tag, error_count: int) -> TagResponse:
-    return TagResponse(id=tag.id, name=tag.name, error_count=error_count, created_at=tag.created_at)
+class AliasItem(BaseModel):
+    id: int
+    name: str
+
+
+TagResponse.model_rebuild()
+
+
+def _tag_response(tag: Tag, error_count: int, aliases: list[TagAlias] | None = None) -> TagResponse:
+    return TagResponse(
+        id=tag.id,
+        name=tag.name,
+        error_count=error_count,
+        created_at=tag.created_at,
+        aliases=[AliasItem(id=a.id, name=a.alias) for a in aliases or []],
+    )
 
 
 # A-004 태그 목록 (R-001, D-021). 자동 완성용 전체 목록, 이름순, 없으면 빈 배열.
 @router.get("/tags", response_model=list[TagResponse])
 def list_tags(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[TagResponse]:
     counts = errors_repo.count_errors_by_tag(db, user_id=user.id)
-    return [_tag_response(tag, counts.get(tag.id, 0)) for tag in tags_repo.list_tags(db, user_id=user.id)]
+    tags = tags_repo.list_tags(db, user_id=user.id)
+    aliases = aliases_repo.list_aliases_by_tag_ids(db, [tag.id for tag in tags], user_id=user.id)  # 한 번의 쿼리
+    return [_tag_response(tag, counts.get(tag.id, 0), aliases.get(tag.id)) for tag in tags]
+
+
+def _tag_response_for(db: Session, tag: Tag, user_id: int) -> TagResponse:
+    """한 태그를 A-004 목록 항목과 같은 모양으로 만든다."""
+    count = errors_repo.count_errors_by_tag(db, user_id=user_id).get(tag.id, 0)
+    aliases = aliases_repo.list_aliases_by_tag_ids(db, [tag.id], user_id=user_id)
+    return _tag_response(tag, count, aliases.get(tag.id))
 
 
 class AttemptInput(BaseModel):
@@ -196,24 +225,47 @@ def search_similar_errors(
 
 
 def _resolve_tags(db: Session, user_id: int, tag_ids: list[int], new_tag_names: list[str]) -> tuple[list[Tag], list[str]]:
-    """기존 태그와 새로 만들 태그 이름을 나눈다. 새 이름이 기존 태그와 같으면 기존 태그로 합친다. (D-019)"""
+    """기존 태그와 새로 만들 태그 이름을 나눈다. (D-019, D-114)
+
+    새 이름은 ① 내 태그 name_key ② 내 별칭 alias_key ③ 새 태그 순으로 찾는다. 별칭은 원래 태그로 바꾼 뒤
+    같은 태그를 한 번만 센다. 별칭은 한 번의 쿼리로 찾는다(key마다 조회하지 않는다).
+    """
     unique_ids = list(dict.fromkeys(tag_ids))
     by_id = {tag.id: tag for tag in tags_repo.get_tags_by_ids(db, unique_ids, user_id=user_id)}
     if len(by_id) != len(unique_ids):
         raise _invalid("없는 태그 ID가 있어요.")
     chosen = [by_id[tag_id] for tag_id in unique_ids]
-    chosen_keys = {tag.name_key for tag in chosen}
+    chosen_ids = {tag.id for tag in chosen}
+
+    def add(tag: Tag) -> None:
+        if tag.id not in chosen_ids:  # 별칭으로 바꿔도 같은 태그는 한 번만
+            chosen_ids.add(tag.id)
+            chosen.append(tag)
 
     new_names: dict[str, str] = {}
     for raw in new_tag_names:
         name = tags_repo.normalize_tag_name(raw)
         key = name.lower()
-        if name and key not in chosen_keys and key not in new_names:
+        if name and key not in new_names:
             new_names[key] = name
 
-    found = tags_repo.get_tags_by_keys(db, list(new_names), user_id=user_id)
-    chosen += [found[key] for key in new_names if key in found]
-    to_create = [name for key, name in new_names.items() if key not in found]
+    found = tags_repo.get_tags_by_keys(db, list(new_names), user_id=user_id)  # ① 태그 이름
+    missing = [key for key in new_names if key not in found]
+    alias_hits = aliases_repo.get_aliases_by_keys(db, missing, user_id=user_id)  # ② 별칭 (한 번에)
+    alias_tags = {
+        tag.id: tag
+        for tag in tags_repo.get_tags_by_ids(db, [alias.tag_id for alias in alias_hits.values()], user_id=user_id)
+    }
+    to_create: list[str] = []
+    for key, name in new_names.items():
+        if key in found:
+            add(found[key])
+        elif key in alias_hits and alias_hits[key].tag_id in alias_tags:
+            add(alias_tags[alias_hits[key].tag_id])
+        else:
+            to_create.append(name)  # ③ 새 태그
+    if any(len(name) > MAX_TAG_NAME for name in to_create):
+        raise _invalid(TAG_NAME_TOO_LONG)
     if len(chosen) + len(to_create) > MAX_TAGS:
         raise _invalid(f"태그는 최대 {MAX_TAGS}개까지 넣을 수 있어요.")
     return chosen, to_create
@@ -528,8 +580,17 @@ def rename_tag(
     name = tags_repo.normalize_tag_name(body.name)
     if not name:
         raise _invalid("태그 이름을 입력해 주세요.")
+    if len(name) > MAX_TAG_NAME:
+        raise _invalid(TAG_NAME_TOO_LONG)
     if tags_repo.find_other_tag_by_key(db, name.lower(), tag.id, user_id=user.id) is not None:
         raise HTTPException(status_code=409, detail=NAME_TAKEN)
+    # 새 이름이 별칭과 같으면: 다른 태그의 별칭이면 409, 자기 자신의 별칭이면 그 별칭을 지우고 바꾼다 (D-114).
+    # 예전 이름을 별칭으로 자동 추가하지는 않는다(오타 수정이 별칭으로 쌓이지 않게).
+    same_alias = aliases_repo.get_aliases_by_keys(db, [name.lower()], user_id=user.id).get(name.lower())
+    if same_alias is not None:
+        if same_alias.tag_id != tag.id:
+            raise HTTPException(status_code=409, detail=NAME_TAKEN)
+        aliases_repo.delete_alias(db, same_alias, user_id=user.id)
     tags_repo.rename_tag(db, tag, name, user_id=user.id)
     try:
         db.commit()
@@ -537,7 +598,7 @@ def rename_tag(
         # 확인한 뒤 다른 요청이 같은 이름을 먼저 저장한 경우(name_key UNIQUE)
         db.rollback()
         raise HTTPException(status_code=409, detail=NAME_TAKEN)
-    return _tag_response(tag, errors_repo.count_errors_by_tag(db, user_id=user.id).get(tag.id, 0))
+    return _tag_response_for(db, tag, user.id)
 
 
 # A-012 태그 삭제 (R-005, D-050). 쓰이는 태그도 지울 수 있고, 에러 연결만 지워진다. 에러는 남는다.
@@ -547,6 +608,89 @@ def delete_tag(tag_id: int, db: Session = Depends(get_db), user: User = Depends(
     if tag is None:
         raise HTTPException(status_code=404, detail="태그를 찾을 수 없어요.")
     tags_repo.delete_tag(db, tag, user_id=user.id)
+    db.commit()
+
+
+class TagMergeRequest(BaseModel):
+    into_tag_id: int
+
+
+# A-022 태그 합치기 (R-005, D-112, D-113). tag_id(합쳐질 태그)를 지우고 into_tag_id(남을 태그)에 모은다.
+@router.post("/tags/{tag_id}/merge", response_model=TagResponse)
+def merge_tag(
+    tag_id: int, body: TagMergeRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> TagResponse:
+    source = tags_repo.get_owned_tag(db, user_id=user.id, tag_id=tag_id)
+    target = tags_repo.get_owned_tag(db, user_id=user.id, tag_id=body.into_tag_id)
+    if source is None or target is None:
+        raise HTTPException(status_code=404, detail="태그를 찾을 수 없어요.")
+    if source.id == target.id:
+        raise _invalid("같은 태그끼리는 합칠 수 없어요.")
+    try:
+        tags_repo.merge_tags(db, source, target, user_id=user.id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return _tag_response_for(db, target, user.id)
+
+
+class AliasCreateRequest(BaseModel):
+    name: str
+
+
+ALIAS_IS_TAG = "이미 있는 태그 이름이에요."  # D-114
+
+
+def _alias_conflict(db: Session, key: str, user_id: int) -> str | None:
+    """별칭으로 쓰려는 key가 내 태그 이름이나 내 별칭과 겹치면 409 문구를, 아니면 None을 돌려준다. (D-114)"""
+    if tags_repo.get_tags_by_keys(db, [key], user_id=user_id):
+        return ALIAS_IS_TAG
+    alias = aliases_repo.get_aliases_by_keys(db, [key], user_id=user_id).get(key)
+    if alias is None:
+        return None
+    owner = tags_repo.get_owned_tag(db, user_id=user_id, tag_id=alias.tag_id)
+    return f"이미 #{owner.name}의 별칭이에요." if owner else "이미 있는 별칭이에요."
+
+
+# A-023 태그 별칭 추가 (R-005, D-114). 태그 이름·다른 별칭과 같으면 409, 빈 이름은 422.
+# 이름은 20자까지다(태그 이름과 같다, D-115).
+@router.post("/tags/{tag_id}/aliases", response_model=AliasItem, status_code=201)
+def create_alias(
+    tag_id: int, body: AliasCreateRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> AliasItem:
+    tag = tags_repo.get_owned_tag(db, user_id=user.id, tag_id=tag_id)
+    if tag is None:
+        raise HTTPException(status_code=404, detail="태그를 찾을 수 없어요.")
+    name = tags_repo.normalize_tag_name(body.name)
+    if not name:
+        raise _invalid("별칭 이름을 입력해 주세요.")
+    if len(name) > MAX_TAG_NAME:
+        raise _invalid(ALIAS_TOO_LONG)
+    conflict = _alias_conflict(db, name.lower(), user.id)
+    if conflict:
+        raise HTTPException(status_code=409, detail=conflict)
+    alias = aliases_repo.create_alias(db, tag, name, user_id=user.id)
+    try:
+        db.commit()
+    except IntegrityError:
+        # 확인한 뒤 다른 요청이 같은 별칭을 먼저 저장한 경우(alias_key UNIQUE)
+        db.rollback()
+        raise HTTPException(status_code=409, detail=_alias_conflict(db, name.lower(), user.id) or "이미 있는 이름이에요.")
+    return AliasItem(id=alias.id, name=alias.alias)
+
+
+# A-024 태그 별칭 삭제 (R-005, D-114). 그 태그의 별칭이 아니거나 남의 것이면 404.
+@router.delete("/tags/{tag_id}/aliases/{alias_id}", status_code=204)
+def delete_alias(
+    tag_id: int, alias_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> None:
+    if tags_repo.get_owned_tag(db, user_id=user.id, tag_id=tag_id) is None:
+        raise HTTPException(status_code=404, detail="태그를 찾을 수 없어요.")
+    alias = aliases_repo.get_owned_alias(db, user_id=user.id, tag_id=tag_id, alias_id=alias_id)
+    if alias is None:
+        raise HTTPException(status_code=404, detail="별칭을 찾을 수 없어요.")
+    aliases_repo.delete_alias(db, alias, user_id=user.id)
     db.commit()
 
 

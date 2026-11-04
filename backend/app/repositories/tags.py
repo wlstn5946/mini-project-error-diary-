@@ -5,11 +5,12 @@
 
 import re
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
-from app.models import Tag
+from app.models import ErrorTag, Tag
 from app.repositories import errors as errors_repo
+from app.repositories import tag_aliases as aliases_repo
 
 
 def normalize_tag_name(raw: str) -> str:
@@ -69,9 +70,33 @@ def rename_tag(db: Session, tag: Tag, name: str, *, user_id: int) -> None:
     db.flush()
 
 
+def merge_tags(db: Session, source: Tag, target: Tag, *, user_id: int) -> None:
+    """source(합쳐질 태그)를 지우고 target(남을 태그)에 모은다. (D-113) 커밋은 호출하는 쪽에서 한다.
+
+    ① target이 이미 붙은 기록의 source 연결은 지우고 ② 나머지 source 연결은 target으로 바꾼다
+    (error_tags 복합 PK 중복을 피한다). ③ source의 별칭을 target으로 옮기고 ④ source의 이름을 target의 별칭으로
+    추가한 뒤 ⑤ source를 지운다. 호출하는 쪽이 한 트랜잭션으로 묶고, 실패하면 롤백한다.
+    """
+    errors_repo.assert_owner(source, user_id)
+    errors_repo.assert_owner(target, user_id)
+    if source.id == target.id:
+        raise ValueError("같은 태그끼리는 합칠 수 없어요.")
+
+    target_errors = select(ErrorTag.error_id).where(ErrorTag.tag_id == target.id)
+    db.execute(delete(ErrorTag).where(ErrorTag.tag_id == source.id, ErrorTag.error_id.in_(target_errors)))
+    db.execute(update(ErrorTag).where(ErrorTag.tag_id == source.id).values(tag_id=target.id))
+
+    source_name = source.name
+    aliases_repo.move_aliases(db, source, target, user_id=user_id)
+    db.delete(source)
+    db.flush()  # source의 name_key 자리를 비운 뒤 별칭으로 넣는다
+    aliases_repo.create_alias(db, target, source_name, user_id=user_id)
+
+
 def delete_tag(db: Session, tag: Tag, *, user_id: int) -> None:
-    """에러 연결(error_tags)을 먼저 지우고 태그를 지운다. 쓰이는 태그도 지울 수 있고 에러는 남는다. (D-044, D-050)"""
+    """에러 연결(error_tags)과 별칭(tag_aliases)을 먼저 지우고 태그를 지운다. 쓰이는 태그도 지울 수 있고 에러는 남는다. (D-044, D-050)"""
     errors_repo.assert_owner(tag, user_id)
     errors_repo.remove_tag_links(db, tag.id, user_id=user_id)
+    aliases_repo.delete_aliases_of_tag(db, tag, user_id=user_id)  # D-114
     db.delete(tag)
     db.flush()
