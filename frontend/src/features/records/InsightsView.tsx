@@ -49,6 +49,8 @@ function InsightsView() {
     )
   }
   if (!data) return <p className="record-state">불러오는 중…</p>
+
+  const maxUnresolved = Math.max(0, ...data.tag_unresolved.map((t) => t.unresolved))
   if (data.resolve_rate.denominator === 0) return <p className="record-state">기록이 쌓이면 여기에 통계가 보여요.</p>
 
   const { resolve_rate: resolve, reuse_rate: reuse, apply_success: apply } = data
@@ -69,23 +71,24 @@ function InsightsView() {
 
         <div className="insight-card">
           <span className="insight-name">재사용 해결</span>
-          <span className="insight-big">{reuse.numerator}회</span>
-          <span className="insight-sub">
-            {reuse.rate === null ? '아직 해결한 기록이 없어요' : `해결의 ${percent(reuse)}`}
+          <span className="insight-big">
+            {percent(reuse)}
             {fewNote(reuse)}
+          </span>
+          <span className="insight-sub">
+            {reuse.rate === null ? '아직 해결한 기록이 없어요' : `해결 ${reuse.denominator}건 중 ${reuse.numerator}회`}
           </span>
         </div>
 
-        <div className="insight-card">
+        {/* 집계 시작일은 내부 기준이라 카드 글자에서 빼고 마우스를 올렸을 때만 알려 준다 (D-136) */}
+        <div className="insight-card" title={`${shortDate(data.apply_since)} 이후에 "이 방법 써 보기"를 한 시도만 센 값이에요`}>
           <span className="insight-name">써 보기 성공률</span>
           <span className="insight-big">
             {percent(apply)}
             {fewNote(apply)}
           </span>
           <span className="insight-sub">
-            {apply.rate === null
-              ? `아직 없어요 · ${shortDate(data.apply_since)} 이후`
-              : `${apply.denominator}번 중 ${apply.numerator}번 · ${shortDate(data.apply_since)} 이후`}
+            {apply.rate === null ? '아직 없어요' : `${apply.denominator}번 중 ${apply.numerator}번`}
           </span>
         </div>
 
@@ -148,15 +151,16 @@ function InsightsView() {
           <p className="insight-empty">태그가 붙은 기록이 아직 없어요.</p>
         ) : (
           <ul className="insight-tags">
+            {/* 막대 길이 = 미해결 수 / 가장 큰 미해결 수. 정렬(미해결 수 순)과 길이가 같은 기준이라 순서와 어긋나지 않는다 (D-135) */}
             {data.tag_unresolved.map((t) => (
               <li key={t.id}>
                 <Link className="insight-tag-row" to={`/records?tag_id=${t.id}&status=unresolved`}>
                   <span className="insight-tag-name">{t.name}</span>
                   <span className="insight-bar" aria-hidden="true">
-                    <span className="insight-bar-fill" style={{ width: `${(t.unresolved / t.total) * 100}%` }} />
+                    <span className="insight-bar-fill" style={{ width: `${maxUnresolved > 0 ? (t.unresolved / maxUnresolved) * 100 : 0}%` }} />
                   </span>
                   <span className="insight-tag-count">
-                    미해결 {t.unresolved} / {t.total}
+                    {t.unresolved}건 · 전체 {t.total}
                   </span>
                 </Link>
               </li>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import StaleDot from '../../components/StaleDot'
 import { listErrors, type ErrorStatus } from './errorsApi'
 import { fetchTags, type Tag } from './tagsApi'
@@ -78,6 +78,71 @@ function RecordFilters({
     setReloadKey((k) => k + 1)
   }
 
+  // 태그 칩은 자주 쓰는 순(기록 많은 순, 같으면 이름순 그대로)으로 한 줄만 보여 주고 나머지는 "+ 더 보기"로 펼친다 (D-133).
+  // "+ 더 보기"는 마지막으로 보이는 칩 바로 뒤에 붙는다(D-147). 칩 폭은 글자로 정해져 줄바꿈 없이 한 번 재 두고(measuring),
+  // 컨테이너 폭이 바뀔 때마다 "칩 k개 + 버튼"이 한 줄에 들어가는 가장 큰 k를 다시 계산한다.
+  const sortedTags = useMemo(() => [...tags].sort((a, b) => b.error_count - a.error_count), [tags])
+  const chipsRef = useRef<HTMLDivElement>(null)
+  const [expanded, setExpanded] = useState(false)
+  // 잰 칩 폭(순서는 sortedTags와 같다)과 "+ 더 보기" 버튼 폭. sig가 다르면 태그가 바뀐 것이라 다시 잰다.
+  const [measured, setMeasured] = useState<{ sig: string; widths: number[]; more: number } | null>(null)
+  const [fitCount, setFitCount] = useState<number | null>(null)
+  // 글꼴이 늦게 불러와져 칩 폭이 달라지면 한 번 다시 재도록 sig에 섞는다(한 번만 바뀐다)
+  const [fontsLoaded, setFontsLoaded] = useState(false)
+  useEffect(() => {
+    let alive = true
+    void document.fonts?.ready.then(() => {
+      if (alive) setFontsLoaded(true)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+  const sig = `${fontsLoaded ? 1 : 0}#` + sortedTags.map((t) => `${t.id}:${t.name}:${t.error_count}`).join('|')
+  const measuring = tagStatus === 'ready' && sortedTags.length > 0 && measured?.sig !== sig
+
+  useEffect(() => {
+    const el = chipsRef.current
+    if (!el || tagStatus !== 'ready') return
+    const GAP = 8
+    function measure() {
+      if (!el) return
+      let m = measured
+      if (measuring) {
+        const chips = Array.from(el.querySelectorAll<HTMLElement>('[data-tag-id]'))
+        const more = el.querySelector<HTMLElement>('[data-more]')
+        if (chips.length !== sortedTags.length || !more) return
+        m = { sig, widths: chips.map((c) => c.offsetWidth), more: more.offsetWidth }
+        setMeasured(m)
+      }
+      if (!m) return
+      const width = el.clientWidth
+      const total = m.widths.reduce((sum, w) => sum + w, 0) + GAP * (m.widths.length - 1)
+      let k = m.widths.length
+      if (total > width) {
+        // 칩 k개 + 버튼이 한 줄에 들어가는 가장 큰 k (최소 1개는 보인다)
+        k = 0
+        let used = m.more
+        for (const w of m.widths) {
+          if (used + GAP + w > width) break
+          used += GAP + w
+          k += 1
+        }
+        k = Math.max(k, 1)
+      }
+      setFitCount(k)
+      // 주소로 들어온 선택 태그가 접힌 칸에 숨으면 선택 상태가 안 보이므로 펼친다
+      if (sortedTags.slice(k).some((t) => tagIds.includes(t.id))) setExpanded(true)
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [sortedTags, tagStatus, tagIds, measured, measuring, sig])
+
+  const hiddenFrom = fitCount ?? sortedTags.length
+  const overflowCount = sortedTags.length - hiddenFrom
+  const collapsed = !expanded && overflowCount > 0
+
   return (
     <div className="record-filters">
       <input
@@ -117,7 +182,12 @@ function RecordFilters({
         </button>
       </div>
 
-      <div className="chip-row" role="group" aria-label="태그">
+      <div
+        ref={chipsRef}
+        className={measuring ? 'tag-filter-chips measuring' : 'tag-filter-chips'}
+        role="group"
+        aria-label="태그"
+      >
         {tagStatus === 'loading' && <span className="hint">태그 불러오는 중…</span>}
         {tagStatus === 'error' && (
           <span className="record-error">
@@ -128,18 +198,34 @@ function RecordFilters({
           </span>
         )}
         {tagStatus === 'ready' &&
-          tags.map((tag) => (
+          sortedTags.map((tag, i) => (
             <button
               key={tag.id}
               type="button"
+              data-tag-id={tag.id}
               className={tag.error_count === 0 ? 'filter-chip tag empty' : 'filter-chip tag'}
               aria-pressed={tagIds.includes(tag.id)}
+              // 접힌 칩은 화면에서 빠져 키보드·스크린 리더에서도 건너뛴다. 재는 중에는 모두 그린다
+              hidden={!measuring && collapsed && i >= hiddenFrom}
               onClick={() => onToggleTag(tag.id)}
             >
               #{tag.name}
               <span className="chip-count">{tag.error_count}</span>
             </button>
           ))}
+        {/* 마지막 보이는 칩 바로 뒤에 붙는다. 펼치면 "접기"가 마지막 칩 뒤에 붙는다 */}
+        {tagStatus === 'ready' && (measuring || overflowCount > 0) && (
+          <button
+            type="button"
+            data-more
+            className="filter-chip tag-more"
+            aria-expanded={expanded}
+            aria-label={expanded ? '태그 접기' : `태그 ${overflowCount}개 더 보기`}
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? '접기' : '+ 더 보기'}
+          </button>
+        )}
       </div>
       {tagStatus === 'ready' && tags.length > 0 && (
         <p className="hint">태그를 여러 개 누르면 모두 포함한 기록만 보여요</p>

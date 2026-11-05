@@ -8,6 +8,13 @@
   gap: 8px;
 }
 
+/* 드롭다운·입력칸(최소 44px)과 오른쪽 버튼의 높이를 맞춘다. 버튼 기본 높이는 40px이라 따로 늘린다 (D-148) */
+.series-row .btn-secondary {
+  align-self: stretch;
+  height: auto;
+  min-height: 44px;
+}
+
 .series-control {
   flex: 1;
   min-width: 0;

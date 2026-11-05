@@ -39,7 +39,8 @@
 
   /* 글자 */
   --font-sans: 'Pretendard Variable', Pretendard, system-ui, 'Malgun Gothic', sans-serif;
-  --mono: 'JetBrains Mono', 'D2Coding', Consolas, monospace;
+  /* 한글은 JetBrains Mono에 없어 다음 글꼴로 넘어간다. D2Coding(고정폭 한글)이 먼저 잡히면 자간이 벌어져 보여 Pretendard를 앞에 둔다 (D-142) */
+  --mono: 'JetBrains Mono', 'Pretendard Variable', Pretendard, Consolas, monospace;
   --fs-xs: 12px;
   --fs-sm: 14px;
   --fs-md: 16px;
@@ -145,15 +146,22 @@ h6 {
   font-weight: 600;
 }
 
-/* 사이드바 대시보드 (D-074, D-110): 칸마다 왼쪽에 상태 색 점 + 이름, 오른쪽에 숫자.
-   누를 수 있는 칸은 hover 때 옅은 바탕만 바뀌고 움직이지 않는다. */
+/* "내 기록"의 하위 보기(전체·해결·미해결)가 현재 위치일 때 부모는 글자색만 강조한다. 배경 강조는 그 하위 항목이 가진다 (D-146) */
+.menu-item.parent-current {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* "내 기록" 아래 들여쓴 하위 보기 3줄 (D-146, 이전: 사이드바 대시보드 D-074, D-110): 줄마다 왼쪽에 상태 색 점 + 이름, 오른쪽에 숫자.
+   hover 때 옅은 바탕만 바뀌고 움직이지 않는다. 왼쪽 가는 선이 "내 기록"에 딸린 목록임을 보여 준다. */
 .sidebar-stats {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-top: 28px;
-  padding-top: 20px;
-  border-top: 1px solid var(--line);
+  margin: 0 0 0 14px;
+  padding: 0 0 0 8px;
+  border-left: 1px solid var(--line);
+  list-style: none;
 }
 
 .stat {
@@ -278,10 +286,6 @@ h6 {
   --stat-color: var(--danger-fg);
 }
 
-.stat-reuse {
-  --stat-color: var(--accent);
-}
-
 /* 누를 수 있는 칸 */
 a.stat {
   cursor: pointer;
@@ -302,11 +306,6 @@ a.stat.active {
 
 a.stat.active .stat-value {
   color: var(--accent);
-}
-
-/* 표시만 하는 칸(재사용 해결): 눌리지 않아 hover 효과가 없다 */
-.stat.static {
-  cursor: default;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -345,8 +344,7 @@ a.stat.active .stat-value {
   box-shadow: var(--focus);
 }
 
-/* 탭: 에러 해결(.tabs)과 내 기록(.view-tabs)이 같은 밑줄 탭을 쓴다 (D-111) */
-.tabs,
+/* 탭: 내 기록(.view-tabs)의 밑줄 탭. 눌러서 바꾸는 탭이다. 에러 해결 화면은 눌리지 않는 단계 표시(.steps)라 모양을 다르게 쓴다 (D-111, D-141) */
 .view-tabs {
   display: flex;
   gap: 28px;
@@ -354,7 +352,6 @@ a.stat.active .stat-value {
   border-bottom: 1px solid var(--line);
 }
 
-.tab,
 .view-tab {
   padding: 10px 0;
   margin-bottom: -1px;
@@ -368,11 +365,6 @@ a.stat.active .stat-value {
   transition: color 0.12s var(--ease);
 }
 
-/* 에러 해결 화면의 탭은 단계 표시라서 눌리지 않는다 (D-108) */
-.tab {
-  cursor: default;
-}
-
 .view-tab {
   cursor: pointer;
 }
@@ -381,7 +373,6 @@ a.stat.active .stat-value {
   color: var(--ink-sub);
 }
 
-.tab[aria-selected='true'],
 .view-tab[aria-selected='true'] {
   border-bottom-color: var(--accent);
   color: var(--ink);
@@ -395,7 +386,7 @@ a.stat.active .stat-value {
 .similar-badge,
 .confidence,
 .reuse-badge,
-.tab-badge {
+.step-badge {
   display: inline-block;
   padding: 2px 9px;
   border-radius: var(--radius-full);
@@ -404,15 +395,79 @@ a.stat.active .stat-value {
   line-height: 1.5;
 }
 
-.tab-badge {
+.step-badge {
   margin-left: 8px;
   background: var(--surface-sub);
   color: var(--ink-sub);
 }
 
-.tab-badge.done {
+.step-badge.done {
   background: var(--ok-bg);
   color: var(--ok-fg);
+}
+
+/* 단계 표시 (에러 해결 화면, D-141): 번호 원 + 이름을 선으로 잇는다. 눌리지 않으므로 손 모양·hover·밑줄이 없다. */
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 0;
+  margin: 0 0 32px;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: default;
+}
+
+.step + .step::before {
+  content: '';
+  width: 28px;
+  height: 1px;
+  margin: 0 12px 0 4px;
+  background: var(--line-strong);
+}
+
+.step-num {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-full);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.step.past {
+  color: var(--ink-sub);
+}
+
+.step.past .step-num {
+  border-color: var(--ok-fg);
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+}
+
+.step.current {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.step.current .step-num {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
 }
 
 /* 라벨과 안내 문구 */
@@ -465,37 +520,57 @@ textarea::placeholder {
   color: var(--ink-faint);
 }
 
-/* 존재감 ①: 에러 메시지 터미널 블록 (D-109).
-   위쪽 32px 막대와 점 3개는 background-image로만 그려서 화면 읽기 프로그램이 읽지 않는다.
-   내용은 padding-top으로 막대 아래에서 시작한다. */
+/* 존재감 ①: 에러 메시지 터미널 블록 (D-109). 장식용 신호등 점과 막대는 없앴다 (D-140). */
 .code-input,
 .code-view {
   box-sizing: border-box;
   width: 100%;
-  padding: 46px 18px 18px;
+  padding: 18px;
   border: 0;
   border-radius: var(--radius-panel);
   box-shadow: 0 0 0 1px rgba(15, 19, 32, 0.9);
   background-color: var(--term-bg);
-  background-image:
-    radial-gradient(circle at 18px 16px, #ff5f57 4.5px, transparent 5px),
-    radial-gradient(circle at 36px 16px, #febc2e 4.5px, transparent 5px),
-    radial-gradient(circle at 54px 16px, #28c840 4.5px, transparent 5px),
-    linear-gradient(var(--term-bar), var(--term-bar));
-  background-size: 100% 32px;
-  background-repeat: no-repeat;
   color: var(--term-text);
   font-family: var(--mono);
   font-size: var(--fs-sm);
   line-height: 1.7;
 }
 
+/* 입력 상자: 위쪽 안내 줄 + 터미널색 입력칸. 비어 있을 때는 120px로 낮게 두고 내용이 들어오면 늘어난다(SolvePage가 높이를 맞춘다, D-140).
+   테두리·포커스 링은 입력칸이 아니라 상자 전체에 그린다. */
+.code-input-box {
+  margin-bottom: 24px;
+  overflow: hidden;
+  border-radius: var(--radius-panel);
+  box-shadow: 0 0 0 1px rgba(15, 19, 32, 0.9);
+  background-color: var(--term-bg);
+}
+
+.code-input-box:focus-within {
+  box-shadow:
+    0 0 0 1px var(--accent),
+    var(--focus);
+}
+
+.code-input-hint {
+  margin: 0;
+  padding: 8px 18px;
+  background: var(--term-bar);
+  color: var(--term-dim);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
 .code-input {
   display: block;
-  min-height: 180px;
-  margin-bottom: 24px;
+  min-height: 120px;
+  max-height: 420px;
+  padding: 14px 18px 16px;
+  border-radius: 0;
+  box-shadow: none;
   caret-color: var(--term-error);
-  resize: vertical;
+  overflow-y: auto;
+  resize: none;
 }
 
 .code-input::placeholder {
@@ -504,9 +579,6 @@ textarea::placeholder {
 
 .code-input:focus {
   outline: none;
-  box-shadow:
-    0 0 0 1px var(--accent),
-    var(--focus);
 }
 
 /* 긴 줄은 줄바꿈하고, 가로 스크롤이 생겨도 블록 안에서만 생긴다 */

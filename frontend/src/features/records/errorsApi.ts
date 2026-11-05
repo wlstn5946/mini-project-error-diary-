@@ -96,6 +96,8 @@ export type ErrorListItem = {
   reused_from_id: number | null
   // 이 기록을 재사용한 기록 전체 수. 태그·시리즈 필터와 상관없다 (D-081)
   reuse_count: number
+  // 해결된 기록의 내 한 줄 정리. 미해결이면 null (D-132)
+  summary: string | null
   // 검색어를 어느 칸에서 찾았는지. 검색하지 않았으면 빈 배열 (D-126)
   matched_in: ('error_message' | 'summary' | 'situation' | 'attempt')[]
   // 에러 메시지 밖에서 찾았을 때 그 부분 한 줄 (D-126)
@@ -121,7 +123,7 @@ export async function listErrors(filters: ErrorFilters, signal?: AbortSignal): P
   const query = params.toString()
   const res = await request(`/api/errors${query ? `?${query}` : ''}`, { signal })
   const items = (await res.json()) as ErrorListItem[]
-  return items.map((item) => ({ ...item, matched_in: item.matched_in ?? [], match_snippet: item.match_snippet ?? null }))
+  return items.map((item) => ({ ...item, summary: item.summary ?? null, matched_in: item.matched_in ?? [], match_snippet: item.match_snippet ?? null }))
 }
 
 // A-009 GET /api/errors/{id} 응답 (API-SPEC_6 6절)

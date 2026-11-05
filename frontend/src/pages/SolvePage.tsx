@@ -31,7 +31,7 @@ import { useFeedback } from '../features/solve/useFeedback'
 import { parseRetryId, useRetryRecord, type RetryState } from '../features/solve/useRetryRecord'
 import '../features/solve/solve.css'
 
-// S-001 에러 해결 (R-001 ~ R-004, SCREEN-SPEC_7). 탭은 에러 입력 / AI 제안 → 시도 기록 / 결과 3개다 (D-064).
+// S-001 에러 해결 (R-001 ~ R-004, SCREEN-SPEC_7). 단계는 에러 입력 / AI 제안·시도 기록 / 결과 3개다 (D-064, D-141).
 // 에러 메시지 입력이 멈추면 A-003으로 비슷한 기록을 자동으로 찾는다. "해당 없음 → AI에게 묻기"를 누르면 입력을 잠그고 A-005로 간다.
 // 에러와 시도는 화면에만 모아 두고, "기록 저장"을 누를 때 A-002 한 번으로 저장한다. 이어서 결과 탭에서 A-016으로 AI 피드백을 받는다.
 // 비슷한 기록의 "이 방법 써 보기"는 저장하지 않는다. 원본 해결법을 시도 1로 채운 시도 기록 화면으로 가고, 결과는 사용자가 고른다 (D-128, D-069 변경).
@@ -70,6 +70,14 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
   // 바뀌면 시리즈·태그 컴포넌트를 새로 만들어 입력을 비운다 ("새 에러 입력")
   const [formKey, setFormKey] = useState(0)
   const [errorMessage, setErrorMessage] = useState(detail?.error_message ?? '')
+  // 에러 메시지 칸은 내용만큼 늘어난다(비어 있으면 CSS 최소 높이 120px, 최대 420px 뒤에는 스크롤). 숨겨진 탭에서는 높이를 잴 수 없어 탭이 바뀔 때도 맞춘다 (D-140)
+  const messageRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    const el = messageRef.current
+    if (!el || tab !== 'input') return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [errorMessage, tab])
   const [situation, setSituation] = useState(detail?.situation ?? '')
   // null이면 새 시리즈 이름이 비었거나 중복이다
   const [seriesChoice, setSeriesChoice] = useState<SeriesChoice | null>({ kind: 'none' })
@@ -292,37 +300,39 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
     feedback.reset()
   }
 
-  const stateTabs: { tab: Tab; label: string }[] = [
+  const steps: { tab: Tab; label: string }[] = [
     { tab: 'input', label: '에러 입력' },
-    { tab: 'analysis', label: 'AI 제안 → 시도 기록' },
+    { tab: 'analysis', label: 'AI 제안 · 시도 기록' },
     { tab: 'result', label: '결과' },
   ]
+  const stepIndex = steps.findIndex((t) => t.tab === tab)
 
   return (
     <>
       <h1 className="page-title">에러 해결</h1>
 
-      <div className="tabs" role="tablist">
-        {stateTabs.map((t) => (
-          // 탭은 지금 어느 단계인지만 보여 준다. 단계 이동은 각 단계의 버튼으로만 한다.
-          <div
-            key={t.tab}
-            role="tab"
-            id={`tab-${t.tab}`}
-            aria-selected={tab === t.tab}
-            aria-controls={`panel-${t.tab}`}
-            className="tab"
-          >
-            {t.label}
-            {t.tab === 'analysis' && loading && <span className="tab-badge">분석 중…</span>}
-            {t.tab === 'analysis' && !loading && result && !saved && <span className="tab-badge done">완료</span>}
-            {t.tab === 'result' && saved && <span className="tab-badge done">저장됨</span>}
-          </div>
-        ))}
-      </div>
+      {/* 단계 표시(D-108, D-141): 눌리지 않는 번호 스텝이다. 지금 단계는 번호가 인디고로 채워지고, 지난 단계는 ✓로 보인다.
+          단계 이동은 각 단계의 버튼으로만 한다. 내 기록의 밑줄 탭(눌리는 탭)과 일부러 다르게 만들었다. */}
+      <ol className="steps" aria-label="진행 단계">
+        {steps.map((t, i) => {
+          const current = i === stepIndex
+          return (
+            <li key={t.tab} className={`step${current ? ' current' : i < stepIndex ? ' past' : ''}`} aria-current={current ? 'step' : undefined}>
+              <span className="step-num" aria-hidden="true">
+                {i < stepIndex ? '✓' : i + 1}
+              </span>
+              <span className="step-label">{t.label}</span>
+              {t.tab === 'analysis' && loading && <span className="step-badge">분석 중…</span>}
+              {t.tab === 'analysis' && !loading && result && !saved && <span className="step-badge done">완료</span>}
+              {t.tab === 'result' && saved && <span className="step-badge done">저장됨</span>}
+            </li>
+          )
+        })}
+      </ol>
 
-      {/* 탭을 바꿔도 선택이 남도록 언마운트하지 않고 숨긴다. 시안 ①처럼 에러 메시지 위에 둔다. */}
-      <div hidden={tab !== 'input'} key={formKey}>
+      {/* 에러 입력 단계 전체. 단계가 바뀌어도 시리즈·태그 선택이 남도록 언마운트하지 않고 숨긴다.
+          순서는 에러 메시지 → 시리즈 → 태그 → 상황이다(D-139): 태그 추천이 에러 메시지를 읽으므로 붙여넣기가 맨 위, 추천은 그 아래로 흐른다. */}
+      <div hidden={tab !== 'input'} key={formKey} role="group" aria-label="에러 입력 단계">
         {inputLocked && (
           <p className="locked-notice">
             {saved
@@ -336,6 +346,29 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
             </button>
           </p>
         )}
+        <label className="field-label" htmlFor="error-message">
+          에러 메시지
+        </label>
+        <div className="code-input-box">
+          {/* 잠겨 있을 때(저장·분석 중)는 붙여넣을 일이 없어 안내를 숨긴다 */}
+          {!inputLocked && (
+            <p className="code-input-hint" id="error-message-hint">
+              Traceback 전체를 붙여넣으면 더 정확해요
+            </p>
+          )}
+          <textarea
+            ref={messageRef}
+            id="error-message"
+            className="code-input"
+            rows={3}
+            maxLength={10000}
+            placeholder="에러 메시지나 Traceback을 붙여넣으세요"
+            aria-describedby="error-message-hint"
+            value={errorMessage}
+            readOnly={inputLocked}
+            onChange={(e) => setErrorMessage(e.target.value)}
+          />
+        </div>
         {detail ? (
           <ReadOnlyLabels detail={detail} />
         ) : (
@@ -344,79 +377,73 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
             <TagInput onChange={setTagsValue} disabled={locked} suggestedTags={matches.flatMap((m) => m.tags)} errorText={searchShown?.query ?? ''} aiTags={aiTags} />
           </>
         )}
+
+        {tab === 'input' && (
+          <section>
+            <label className="field-label" htmlFor="situation">
+              상황 (선택)
+            </label>
+            <input
+              id="situation"
+              className="situation-input"
+              placeholder="예: 새로 만든 가상환경에서 처음 실행함"
+              value={situation}
+              disabled={inputLocked}
+              onChange={(e) => setSituation(e.target.value)}
+            />
+            {detail && <PreviousAttempts detail={detail} />}
+
+            {!locked && message && (
+              <div aria-live="polite">
+                {searchPending && <p className="hint">비슷한 기록을 찾는 중…</p>}
+                {!searchPending && searchShown?.items === null && <p className="hint">{SEARCH_FAILED_NOTICE}</p>}
+              </div>
+            )}
+            {matches.length > 0 && (
+              <SimilarRecords
+                matches={matches}
+                busy={searchPending || saving || seriesChoice === null}
+                onApply={applyMatch}
+              />
+            )}
+
+            {!locked && (
+              <div className="similar-footer">
+                <button
+                  type="button"
+                  className="btn-ask-ai"
+                  disabled={!message || seriesChoice === null}
+                  aria-describedby={!message ? 'ask-ai-hint' : undefined}
+                  onClick={askAi}
+                >
+                  해당 없음 → AI에게 묻기
+                </button>
+              </div>
+            )}
+            {/* 비교할 에러가 없을 때 버튼이 꺼져 있는 이유를 알려 준다 (D-145) */}
+            {!locked && !message && (
+              <p className="hint similar-footer-hint" id="ask-ai-hint">
+                에러 메시지를 붙여넣으면 내 기록부터 찾아볼게요
+              </p>
+            )}
+            {!locked && seriesChoice === null && <p className="hint">시리즈 이름을 확인해 주세요.</p>}
+            {locked && (loading || result || applied) && !saved && (
+              <p className="hint">
+                {loading ? 'AI가 분석하는 중이에요.' : result ? '분석이 끝났어요.' : '기존 기록의 방법을 써 보는 중이에요.'} 결과는 위의 &quot;AI 제안 · 시도 기록&quot; 단계에서 볼 수 있어요.
+              </p>
+            )}
+          </section>
+        )}
       </div>
 
-      {tab === 'input' && (
-        <section role="tabpanel" id="panel-input" aria-labelledby="tab-input">
-          <label className="field-label" htmlFor="error-message">
-            에러 메시지
-          </label>
-          <textarea
-            id="error-message"
-            className="code-input"
-            rows={5}
-            maxLength={10000}
-            placeholder="에러 메시지나 Traceback을 붙여넣으세요"
-            value={errorMessage}
-            readOnly={inputLocked}
-            onChange={(e) => setErrorMessage(e.target.value)}
-          />
-          <label className="field-label" htmlFor="situation">
-            상황 (선택)
-          </label>
-          <input
-            id="situation"
-            className="situation-input"
-            placeholder="예: 새로 만든 가상환경에서 처음 실행함"
-            value={situation}
-            disabled={inputLocked}
-            onChange={(e) => setSituation(e.target.value)}
-          />
-          {detail && <PreviousAttempts detail={detail} />}
-
-          {!locked && message && (
-            <div aria-live="polite">
-              {searchPending && <p className="hint">비슷한 기록을 찾는 중…</p>}
-              {!searchPending && searchShown?.items === null && <p className="hint">{SEARCH_FAILED_NOTICE}</p>}
-            </div>
-          )}
-          {matches.length > 0 && (
-            <SimilarRecords
-              matches={matches}
-              busy={searchPending || saving || seriesChoice === null}
-              onApply={applyMatch}
-            />
-          )}
-
-          {!locked && (
-            <div className="similar-footer">
-              <button
-                type="button"
-                className="btn-ask-ai"
-                disabled={!message || seriesChoice === null}
-                onClick={askAi}
-              >
-                해당 없음 → AI에게 묻기
-              </button>
-            </div>
-          )}
-          {!locked && seriesChoice === null && <p className="hint">시리즈 이름을 확인해 주세요.</p>}
-          {locked && (loading || result || applied) && !saved && (
-            <p className="hint">
-              {loading ? 'AI가 분석하는 중이에요.' : result ? '분석이 끝났어요.' : '기존 기록의 방법을 써 보는 중이에요.'} 결과는 위의 &quot;AI 제안 → 시도 기록&quot; 탭에서 볼 수 있어요.
-            </p>
-          )}
-        </section>
-      )}
-
       {tab === 'analysis' && (
-        <section role="tabpanel" id="panel-analysis" aria-labelledby="tab-analysis">
+        <section aria-label="AI 제안·시도 기록 단계">
           {!saved && (
             <button type="button" className="btn-secondary" disabled={saving} onClick={backToInput}>
               ← 에러 입력으로 돌아가기
             </button>
           )}
-          {!locked && <p className="empty">아직 AI에게 묻지 않았어요. &quot;에러 입력&quot; 탭에서 에러를 입력해 주세요.</p>}
+          {!locked && <p className="empty">아직 AI에게 묻지 않았어요. &quot;에러 입력&quot; 단계에서 에러를 입력해 주세요.</p>}
 
           {locked && <ErrorMessageView text={errorMessage} />}
 
@@ -464,12 +491,12 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
             </>
           )}
 
-          {saved && <p className="attempt-notice">기록을 저장했어요. 결과는 &quot;결과&quot; 탭에서 볼 수 있어요.</p>}
+          {saved && <p className="attempt-notice">기록을 저장했어요. 결과는 &quot;결과&quot; 단계에서 볼 수 있어요.</p>}
         </section>
       )}
 
       {tab === 'result' && (
-        <section role="tabpanel" id="panel-result" aria-labelledby="tab-result">
+        <section aria-label="결과 단계">
           {saved ? (
             <>
               <ErrorMessageView text={saved.error_message} />
