@@ -339,7 +339,7 @@
   font-size: 14px;
 }
 
-/* Gemini로 보내기 전 민감 정보를 가렸다는 안내 (D-125) */
+/* AI로 보내기 전 민감 정보를 가렸다는 안내 (D-125) */
 .ai-masked {
   margin: 4px 0 0;
   font-size: 12px;

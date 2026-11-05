@@ -4,7 +4,7 @@
 이번 범위는 A-005(AI 해결책 제안, previous_attempts 포함), A-006(시도 기록), A-007(한 줄 정리 수정), A-016(AI 피드백)을 구현한다.
 SQL은 이 파일에 쓰지 않고 backend/app/repositories/에만 둔다. (D-016)
 프롬프트·응답 JSON 형식: docs/PROMPTS/PROMPTS_2.md
-Gemini로 보내기 전 민감 정보 가리기 (D-125 제안): 보내는 글에서만 가리고, DB 저장 값·화면 표시 값은 원문 그대로다.
+Claude로 보내기 전 민감 정보 가리기 (D-125 제안): 보내는 글에서만 가리고, DB 저장 값·화면 표시 값은 원문 그대로다.
 계정별 분리 (D-086, D-087, D-105): A-006, A-007, A-016은 get_owned_error로 소유를 확인하고 남의 기록은 404다. A-005는 로그인한 사용자의 해결 기록에서 관련 기록을 서버가 직접 찾아 프롬프트에 붙인다(D-123). 요청 본문으로 기록 id·내용은 받지 않는다.
 """
 
@@ -15,14 +15,13 @@ from collections.abc import Callable
 from difflib import SequenceMatcher
 from typing import Literal, TypeVar
 
+import anthropic
 from fastapi import APIRouter, Depends, HTTPException
-from google import genai
-from google.genai import types
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.config import GEMINI_API_KEY
+from app.config import ANTHROPIC_API_KEY
 from app.db import get_db
 from app.error_text import key_line, mask_variable_parts
 from app.models import ErrorRecord, User
@@ -34,11 +33,12 @@ from app.security import get_current_user
 router = APIRouter(tags=["solve"])
 logger = logging.getLogger(__name__)
 
-PRIMARY_MODEL = "gemini-3.5-flash"
-FALLBACK_MODEL = "gemini-3.5-flash-lite"
+PRIMARY_MODEL = "claude-haiku-5-5"
+FALLBACK_MODEL = "claude-sonnet-5-5"
 # 모델별 시도 횟수. 시도 사이에는 1초, 2초 순으로 기다린다.
 ATTEMPTS = {PRIMARY_MODEL: 3, FALLBACK_MODEL: 2}
-TIMEOUT_MS = 15_000
+TIMEOUT_SECONDS = 15.0
+MAX_TOKENS = 8_000  # 생각(thinking) 토큰도 포함되므로 넉넉히 둔다
 
 UNAVAILABLE_MESSAGE = "지금은 AI 분석을 가져오지 못했어요. 잠시 뒤 다시 시도해 주세요."
 FEEDBACK_UNAVAILABLE_MESSAGE = "지금은 AI 피드백을 가져오지 못했어요. 잠시 뒤 다시 시도해 주세요."
@@ -125,8 +125,8 @@ class SuggestionRequest(BaseModel):
     tag_ids: list[int] = []
 
 
-class GeminiAnalysis(BaseModel):
-    """Gemini가 돌려주는 JSON 형식 (PROMPTS 참고)."""
+class ClaudeAnalysis(BaseModel):
+    """Claude가 돌려주는 JSON 형식 (PROMPTS 참고)."""
 
     confidence: Literal["높음", "보통", "낮음"]
     cause: str
@@ -155,7 +155,7 @@ class SuggestionResponse(BaseModel):
     solutions: list[str] = []
     message: str | None = None
     references: list[ReferenceResponse] = []
-    # Gemini로 보내기 전에 가린 민감 정보 개수. <USER>는 세지 않는다. unavailable이면 0 (D-125)
+    # Claude로 보내기 전에 가린 민감 정보 개수. <USER>는 세지 않는다. unavailable이면 0 (D-125)
     masked_count: int = 0
 
 
@@ -164,7 +164,7 @@ HISTORY_MIN_SIMILARITY = 40  # %
 HISTORY_LIMIT = 3
 HISTORY_TEXT_MAX = 200
 
-# Gemini로 보내기 전 민감 정보 가리기 (D-125). 위에서부터 순서대로 적용하고, 같은 글에 두 번 적용해도 결과가 같다.
+# Claude로 보내기 전 민감 정보 가리기 (D-125). 위에서부터 순서대로 적용하고, 같은 글에 두 번 적용해도 결과가 같다.
 _SECRET = "<SECRET>"
 _KV_NAMES = "password|passwd|pwd|secret|token|api_key|apikey|api-key|access_key|secret_key|client_secret|private_key"
 _KV = re.compile(
@@ -283,19 +283,16 @@ def build_prompt(
 T = TypeVar("T", bound=BaseModel)
 
 
-def _ask_gemini(client: genai.Client, model: str, prompt: str, schema: type[T], is_valid: Callable[[T], bool]) -> T:
-    response = client.models.generate_content(
+def _ask_claude(client: anthropic.Anthropic, model: str, prompt: str, schema: type[T], is_valid: Callable[[T], bool]) -> T:
+    response = client.messages.parse(
         model=model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=schema,
-            http_options=types.HttpOptions(timeout=TIMEOUT_MS),
-        ),
+        max_tokens=MAX_TOKENS,
+        messages=[{"role": "user", "content": prompt}],
+        output_format=schema,
     )
-    parsed = response.parsed
+    parsed = response.parsed_output
     if not isinstance(parsed, schema) or not is_valid(parsed):
-        raise ValueError("Gemini 응답이 형식에 맞지 않음")
+        raise ValueError("Claude 응답이 형식에 맞지 않음")  # 거절(refusal)·잘림(max_tokens)도 여기로 온다
     return parsed
 
 
@@ -304,16 +301,17 @@ def _generate_json(prompt: str, schema: type[T], is_valid: Callable[[T], bool]) 
 
     시간 초과·실패 응답·JSON 파싱 실패 모두 예외 대신 None으로 돌려 화면이 멈추지 않게 한다. (CLAUDE.md 6절)
     """
-    if not GEMINI_API_KEY:
+    if not ANTHROPIC_API_KEY:
         return None
     for model, attempts in ATTEMPTS.items():
         for attempt in range(attempts):
             try:
-                client = genai.Client(api_key=GEMINI_API_KEY)  # 만드는 중 실패해도 화면이 멈추지 않게 try 안에서 만든다
-                return _ask_gemini(client, model, prompt, schema, is_valid)
+                # 재시도는 아래 루프가 맡으므로 SDK 자체 재시도는 끈다. 만드는 중 실패해도 화면이 멈추지 않게 try 안에서 만든다.
+                client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY, timeout=TIMEOUT_SECONDS, max_retries=0)
+                return _ask_claude(client, model, prompt, schema, is_valid)
             except Exception as exc:  # 어떤 실패든 다음 시도로 넘어간다. 키는 로그에 남기지 않는다.
-                code = getattr(exc, "code", None)
-                logger.warning("Gemini 호출 실패 model=%s attempt=%d: %s %s", model, attempt + 1, type(exc).__name__, code)
+                code = getattr(exc, "status_code", None)
+                logger.warning("Claude 호출 실패 model=%s attempt=%d: %s %s", model, attempt + 1, type(exc).__name__, code)
                 # 쿼터 초과(429)·모델 없음(404)은 재시도해도 같으므로 바로 다음 모델로 넘어간다.
                 if code in (404, 429):
                     break
@@ -333,7 +331,7 @@ def create_ai_suggestion(
     body: SuggestionRequest, db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> SuggestionResponse:
     error_message = body.error_message.strip()
-    if not error_message or not GEMINI_API_KEY:
+    if not error_message or not ANTHROPIC_API_KEY:
         return _unavailable()
 
     # 과거 기록 조회·계산이 실패해도 AI 제안은 기록 없이(v2 방식) 계속한다. (D-123, CLAUDE.md 6절)
@@ -342,10 +340,10 @@ def create_ai_suggestion(
     except Exception as exc:
         logger.warning("과거 기록 후보 계산 실패: %s", type(exc).__name__)
         history = []
-    db.rollback()  # 읽기를 끝내고, Gemini를 기다리는 동안 DB 트랜잭션을 열어 두지 않는다.
+    db.rollback()  # 읽기를 끝내고, Claude를 기다리는 동안 DB 트랜잭션을 열어 두지 않는다.
 
     prompt, masked_count = build_prompt(error_message, body.previous_attempts, history)
-    analysis = _generate_json(prompt, GeminiAnalysis, lambda a: bool(a.cause.strip() and a.solutions))
+    analysis = _generate_json(prompt, ClaudeAnalysis, lambda a: bool(a.cause.strip() and a.solutions))
     if analysis is None:
         return _unavailable()
     # 보낸 번호(1~history 수) 밖의 값과 중복은 버리고, 번호를 실제 기록으로 바꾼다.
@@ -502,8 +500,8 @@ def update_summary(
     return SummaryResponse.model_validate(error)
 
 
-class GeminiFeedback(BaseModel):
-    """Gemini가 돌려주는 JSON 형식 (PROMPTS P-002 참고)."""
+class ClaudeFeedback(BaseModel):
+    """Claude가 돌려주는 JSON 형식 (PROMPTS P-002 참고)."""
 
     feedback: str
 
@@ -535,9 +533,9 @@ def create_feedback(
         attempts="\n".join(attempt_lines) or "(없음)",
         summary=redact_secrets(summary)[0] if summary else "(없음)",
     )
-    db.rollback()  # 읽기를 끝내고, Gemini를 기다리는 동안 DB 트랜잭션을 열어 두지 않는다. 저장 전에 다시 읽는다.
+    db.rollback()  # 읽기를 끝내고, Claude를 기다리는 동안 DB 트랜잭션을 열어 두지 않는다. 저장 전에 다시 읽는다.
 
-    result = _generate_json(prompt, GeminiFeedback, lambda f: bool(f.feedback.strip()))
+    result = _generate_json(prompt, ClaudeFeedback, lambda f: bool(f.feedback.strip()))
     if result is None:
         return FeedbackResponse(status="unavailable", message=FEEDBACK_UNAVAILABLE_MESSAGE)
 

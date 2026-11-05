@@ -21,7 +21,7 @@ export type Suggestion = {
   message: string | null
   // 프롬프트에 붙여 참고한 내 기록 (D-123)
   references: SuggestionReference[]
-  // Gemini로 보내기 전에 가린 민감 정보 개수 (D-125)
+  // AI로 보내기 전에 가린 민감 정보 개수 (D-125)
   masked_count: number
 }
 
