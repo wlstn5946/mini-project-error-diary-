@@ -126,3 +126,9 @@
   justify-content: flex-end;
   margin-top: 24px;
 }
+
+/* 꺼진 "AI에게 묻기" 버튼 아래 이유 한 줄: 버튼과 같이 오른쪽 정렬 (D-145) */
+.similar-footer-hint {
+  margin: 8px 0 0;
+  text-align: right;
+}

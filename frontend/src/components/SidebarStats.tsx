@@ -2,21 +2,18 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router'
 import { getErrorStats, RECORDS_CHANGED_EVENT, type ErrorStats } from '../features/records/errorsApi'
 import StaleDot from './StaleDot'
+import { matchSubView, SUB_VIEWS, type SubViewKey } from './sidebarNav'
 
-// 사이드바 대시보드 (시안 내기록창_예시.png의 "에러 기록 N개 · 해결 · 미해결 · 재사용 해결", D-074).
-// 한 칸에 한 줄씩 4칸이다. 에러 기록·해결·미해결은 누르면 내 기록의 전체·해결·미해결 보기로 간다.
-// 재사용 해결은 모아 보는 필터가 없어서 내 기록의 통계 탭으로 간다 (D-129).
+// 사이드바 "내 기록" 하위 보기 (D-146, 이전 이름 사이드바 대시보드: D-074, D-110). 전체·해결·미해결 3줄이고
+// 누르면 내 기록의 전체·해결·미해결 보기로 간다. "재사용 해결"은 목록 필터가 아니라 통계 탭 항목이라 사이드바에서 뺐다(값은 통계 탭 카드에 있다, D-129).
 // 개수는 화면을 옮길 때, 창에 다시 돌아왔을 때, 기록이 저장·삭제됐을 때 다시 불러온다. 실패하면 이전 값(없으면 "-")을 둔다.
 
-type Tone = 'all' | 'resolved' | 'unresolved' | 'reuse'
-
 type Row = {
-  key: Tone
+  key: SubViewKey
   label: string
   unit: string
   value: number | null
-  // 없으면 누를 수 없는 표시 칸이다
-  to?: string
+  to: string
   // 1 이상이면 칸에 깜빡이는 빨간 불을 켠다: 14일 이상 지난 미해결 기록이 있다는 뜻이다 (D-078)
   staleCount?: number
 }
@@ -49,57 +46,48 @@ function SidebarStats() {
     return () => controller.abort()
   }, [pathname, reloadKey])
 
-  const rows: Row[] = [
-    { key: 'all', label: '에러 기록', unit: '개', value: stats?.total ?? null, to: '/records' },
-    { key: 'resolved', label: '해결', unit: '개', value: stats?.resolved ?? null, to: '/records?status=resolved' },
-    {
-      key: 'unresolved',
-      label: '미해결',
-      unit: '개',
-      value: stats?.unresolved ?? null,
-      to: '/records?status=unresolved',
-      staleCount: stats?.stale_unresolved ?? 0,
-    },
-    { key: 'reuse', label: '재사용 해결', unit: '회', value: stats?.reused_resolved ?? null, to: '/records?view=stats' },
-  ]
+  const values: Record<SubViewKey, number | null> = {
+    all: stats?.total ?? null,
+    resolved: stats?.resolved ?? null,
+    unresolved: stats?.unresolved ?? null,
+  }
+  const rows: Row[] = SUB_VIEWS.map((view) => ({
+    key: view.key,
+    label: view.label,
+    unit: '개',
+    value: values[view.key],
+    to: view.to,
+    // 미해결 줄에만: 14일 이상 지난 미해결 기록이 있으면 빨간 불 (D-078)
+    staleCount: view.key === 'unresolved' ? (stats?.stale_unresolved ?? 0) : 0,
+  }))
+
+  // 주소가 하위 항목과 경로·쿼리까지 정확히 같을 때만 그 항목을 배경 강조한다 (D-146). 부모 "내 기록"의 강조는 Sidebar가 같은 판단(matchSubView)으로 정한다.
+  const activeKey = matchSubView(location.pathname, location.search)
 
   return (
-    <section className="sidebar-stats" aria-label="내 기록 통계">
+    <ul className="sidebar-stats" aria-label="내 기록 보기">
       {rows.map((row) => {
         const text = row.value === null ? '-' : `${row.value}${row.unit}`
         const stale = row.staleCount ?? 0
-        const content = (
-          <>
-            <span className="stat-label">
-              {stale > 0 && <StaleDot label={`14일 이상 지난 미해결 기록 ${stale}개`} />}
-              {row.label}
-            </span>
-            <span className="stat-value">{text}</span>
-          </>
-        )
-        if (!row.to) {
-          return (
-            <div key={row.key} className={`stat stat-${row.key} static`}>
-              {content}
-            </div>
-          )
-        }
-        // 지금 보고 있는 내 기록 보기(전체·해결·미해결)와 같은 칸은 강조한다. 탭·태그 등 다른 조건이 붙어 있으면 강조하지 않는다.
-        const [targetPath, targetSearch = ''] = row.to.split('?')
-        const active = location.pathname === targetPath && location.search === (targetSearch ? `?${targetSearch}` : '')
+        const active = activeKey === row.key
         return (
-          <Link
-            key={row.key}
-            to={row.to}
-            className={`stat stat-${row.key}${active ? ' active' : ''}`}
-            aria-current={active ? 'page' : undefined}
-            aria-label={`내 기록 ${row.label} 보기 · ${text}${stale > 0 ? ` · 14일 이상 지난 미해결 기록 ${stale}개` : ''}`}
-          >
-            {content}
-          </Link>
+          <li key={row.key}>
+            <Link
+              to={row.to}
+              className={`stat stat-${row.key}${active ? ' active' : ''}`}
+              aria-current={active ? 'page' : undefined}
+              aria-label={`내 기록 ${row.label} 보기 · ${text}${stale > 0 ? ` · 14일 이상 지난 미해결 기록 ${stale}개` : ''}`}
+            >
+              <span className="stat-label">
+                {stale > 0 && <StaleDot label={`14일 이상 지난 미해결 기록 ${stale}개`} />}
+                {row.label}
+              </span>
+              <span className="stat-value">{text}</span>
+            </Link>
+          </li>
         )
       })}
-    </section>
+    </ul>
   )
 }
 

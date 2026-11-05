@@ -22,7 +22,7 @@
 | IMPACT-ANALYSIS | 새 기능이 기존 코드에 주는 영향 | [결정 필요] |
 
 - 최신 버전 찾기: 각 문서 폴더에서 `_N`의 N이 가장 큰 파일을 읽는다.
-- 버전 표기 방식(`_N` 단일 번호인지, `_N_M`인지)은 [결정 필요].
+- 버전 표기는 `_N` 단일 번호다. (예: `PRD_26.md`)
 - 만들지 않는 문서: API-SPEC-CHANGE, DATA-MIGRATION-PLAN (D-002), PR-BODY(PR 설명에 바로 작성).
 - 경로가 [결정 필요]인 문서는 새로 만들기 전에 경로를 질문한다.
 
@@ -74,7 +74,7 @@
   - DB: `.env`의 `DATABASE_URL`에 PostgreSQL 접속 주소를 넣는다. 로컬은 `error_diary` DB를 먼저 만든다. (D-058, D-059)
 - 화면이 서버를 부르는 곳은 `frontend/src/api.ts`의 `request()` 한 곳이다. 기능별 `*Api.ts`는 `fetch`를 직접 쓰지 않고 `request()`를 거친다. (D-056)
 - 패키지를 추가하면 `requirements.txt`에 `==` 버전으로 고정한다.
-- 프론트 실행·빌드, 테스트 명령은 [결정 필요].
+- 프론트 (`frontend/`에서): 실행 `npm run dev`, 빌드 `npm run build`(`tsc -b && vite build`), 린트 `npm run lint`. 테스트 명령은 [결정 필요].
 
 ## 7. 화면 규칙
 - 메뉴는 "에러 해결", "내 기록" 두 개만 둔다. (D-005)

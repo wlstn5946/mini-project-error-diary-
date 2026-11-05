@@ -406,6 +406,9 @@ class ErrorListItem(BaseModel):
     resolved_at: str | None
     # 오래된 기록인가: 미해결이고 등록한 지 14일 이상. 화면의 빨간 불이 이 값을 따른다. (D-078)
     is_stale: bool
+    # 해결된 기록의 내 한 줄 정리. 목록이 해결법을 바로 보여주려고 쓴다. 미해결 기록은 정리가 있어도 None이다. (D-132)
+    # 상세(A-009)는 아래 ErrorDetailResponse에서 상태와 상관없이 저장된 값을 다시 채운다.
+    summary: str | None = None
     # 재사용 기록이 가리키는 맨 처음 원본. 원본이면 None이다. (D-080)
     reused_from_id: int | None
     # 이 기록을 재사용한 기록 전체 수. 태그·시리즈 필터와 상관없다. (D-081)
@@ -507,6 +510,7 @@ def _list_items(db: Session, user_id: int, errors: list[ErrorRecord], q: str | N
             is_stale=errors_repo.is_stale(error, cutoff),
             reused_from_id=error.reused_from_id,
             reuse_count=reuse_counts.get(error.id, 0),
+            summary=error.summary if error.status == "resolved" else None,
         )
         for error in errors
     ]
@@ -665,7 +669,7 @@ def get_error_detail(
     children = errors_repo.list_reuses(db, error.id, user_id=user.id)
     child_items = {child.id: child_item for child, child_item in zip(children, _list_items(db, user.id, children))}
     return ErrorDetailResponse(
-        **item.model_dump(),
+        **item.model_dump(exclude={"summary"}),  # summary는 아래에서 상태와 상관없이 채운다 (D-132)
         situation=error.situation,
         summary=error.summary,
         ai_feedback=error.ai_feedback,

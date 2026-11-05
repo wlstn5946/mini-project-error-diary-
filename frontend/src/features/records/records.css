@@ -44,6 +44,37 @@
   font-weight: 500;
 }
 
+/* 태그 칩 줄: 접힌 상태에서는 한 줄에 들어가는 칩만 보이고 "+ 더 보기"가 마지막 보이는 칩 바로 뒤에 붙는다 (D-133, D-147).
+   measuring은 칩 폭을 재는 첫 그리기다: 줄바꿈 없이 한 줄로 늘어놓고(칩이 줄어들지 않게) 화면에는 보이지 않는다. */
+.tag-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tag-filter-chips [hidden] {
+  display: none;
+}
+
+.tag-filter-chips.measuring {
+  flex-wrap: nowrap;
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+.tag-filter-chips .filter-chip {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.tag-more {
+  color: var(--accent);
+}
+
 /* 기록이 0개인 태그 칩은 흐리게 보인다. 누르는 동작은 그대로다 (D-111) */
 .filter-chip.empty {
   opacity: 0.5;
@@ -60,7 +91,11 @@
 .stale-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+}
+
+/* 불과 글자 사이만 띄운다. 글자와 숫자 사이는 다른 칩과 같게 .chip-count의 4px만 쓴다 (D-148) */
+.stale-chip .stale-dot {
+  margin-right: 8px;
 }
 
 .record-filters .hint {
@@ -87,14 +122,54 @@
   margin-left: 8px;
 }
 
-/* 날짜 제목: 왼쪽 날짜, 오른쪽 개수 (양 끝 정렬) */
+/* 날짜별 묶음: 왼쪽에 날짜 칸, 오른쪽에 카드 패널 (D-134). 날짜 칸은 묶음이 길면 스크롤해도 위에 붙어 따라온다.
+   좁은 화면(480px 이하)에서는 날짜를 카드 위 한 줄로 되돌린다. */
+.record-list > section {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
+  margin-top: 16px;
+}
+
 .record-date {
+  position: sticky;
+  top: 16px;
   display: flex;
-  justify-content: space-between;
-  margin: 36px 0 8px;
+  flex-direction: column;
+  gap: 2px;
+  margin: 16px 0 0;
   color: var(--ink-sub);
   font-size: var(--fs-sm);
   font-weight: 600;
+  line-height: 1.4;
+}
+
+.record-date-day {
+  white-space: nowrap;
+}
+
+.record-date-week {
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+@media (max-width: 480px) {
+  .record-list > section {
+    display: block;
+    margin-top: 20px;
+  }
+
+  .record-date {
+    position: static;
+    flex-direction: row;
+    justify-content: space-between;
+    margin: 0 0 8px;
+  }
+
+  .record-date-day {
+    margin-right: auto;
+  }
 }
 
 .record-date-count {
@@ -213,12 +288,12 @@
   font-size: var(--fs-sm);
 }
 
-/* 시리즈 표시: 주황 작은 둥근 배지 */
+/* 시리즈 표시: 무채색 작은 둥근 배지. 주황은 상태 전용이라 쓰지 않는다 (D-109, D-137) */
 .record-series {
   padding: 0 8px;
   border-radius: var(--radius-full);
-  background: var(--warn-bg);
-  color: var(--warn-fg);
+  background: var(--surface-sub);
+  color: var(--ink-sub);
   font-size: var(--fs-xs);
   font-weight: 500;
 }
@@ -1088,6 +1163,21 @@ button.reuse-badge:hover {
   font-weight: 500;
 }
 
+.record-summary {
+  display: block;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-summary mark {
+  padding: 0;
+  background: var(--warn-bg);
+  color: inherit;
+}
+
 .match-snippet {
   display: block;
   overflow: hidden;
@@ -1244,7 +1334,8 @@ a.insight-card:hover {
 
 .insight-tag-row {
   display: grid;
-  grid-template-columns: minmax(60px, 120px) 1fr auto;
+  /* 줄마다 칸 폭이 같아야 막대 시작과 끝이 세로로 맞는다: 이름 120px, 막대 나머지, 숫자 96px 고정 (D-143) */
+  grid-template-columns: 120px minmax(0, 1fr) 96px;
   align-items: center;
   gap: 10px;
   padding: 6px 4px;
@@ -1276,6 +1367,7 @@ a.insight-card:hover {
 .insight-tag-count {
   color: var(--ink-sub);
   font-size: var(--fs-xs);
+  text-align: right;
   white-space: nowrap;
 }
 

@@ -20,9 +20,14 @@ const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토']
 
 // "2026-10-30" → "10월 30일 (목)". created_at은 한국 시간(D-015)이라 날짜 부분을 그대로 쓴다.
 // 요일은 브라우저 시간대와 상관없게 UTC로 계산한다.
-function dateLabel(date: string) {
+function dateParts(date: string) {
   const [y, m, d] = date.split('-').map(Number)
-  return `${m}월 ${d}일 (${WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]})`
+  return { day: `${m}월 ${d}일`, weekday: WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()] }
+}
+
+function dateLabel(date: string) {
+  const { day, weekday } = dateParts(date)
+  return `${day} (${weekday})`
 }
 
 // "2026-10-30T…" → "10/30"
@@ -61,11 +66,14 @@ function Highlighted({ text, query }: { text: string; query?: string }) {
   )
 }
 
-// 항목의 내용: 윗줄에 상태 배지와 제목(첫 줄), 아랫줄에 시리즈·날짜·시도 횟수·태그. 모든 목록이 같이 쓴다.
+// 항목의 내용: 첫 줄에 상태 배지와 제목(핵심 줄), 해결된 기록은 둘째 줄에 💡 한 줄 정리(D-132), 마지막 줄에 시리즈·날짜·시도 횟수·태그. 모든 목록이 같이 쓴다.
 export function RecordItemContent({ item, showDate = false, showSeries = true, reuseBadge = false, query }: ContentProps) {
   // 에러 메시지 밖에서 찾은 칸만 배지로 보여준다. 미리보기 아이콘은 정리 → 시도 → 상황 순서로 처음 걸린 칸 (D-126)
   const matchedOut = item.matched_in.filter((m): m is keyof typeof MATCH_LABELS => m !== 'error_message')
   const snippetFrom = (['summary', 'attempt', 'situation'] as const).find((m) => matchedOut.includes(m))
+  // 정리 줄이 이미 보이면 정리에서 찾은 미리보기는 같은 글이라 따로 보여주지 않는다. 검색어 강조는 정리 줄이 맡는다 (D-132)
+  const showSummary = item.status === 'resolved' && !!item.summary
+  const showSnippet = !!snippetFrom && !!item.match_snippet && !(snippetFrom === 'summary' && showSummary)
   return (
     <span className="record-main">
       <span className="record-head">
@@ -82,19 +90,25 @@ export function RecordItemContent({ item, showDate = false, showSeries = true, r
         ))}
         {reuseBadge && item.reused_from_id !== null && <span className="reuse-badge">재사용</span>}
       </span>
+      {showSummary && (
+        <span className="record-summary" title={item.summary ?? undefined}>
+          💡 <Highlighted text={item.summary ?? ''} query={query} />
+        </span>
+      )}
       <span className="record-meta">
         {showSeries && item.series && <span className="record-series">{item.series.name}</span>}
         {showDate && <span>{shortDate(item.created_at)}</span>}
-        <span>시도 {item.attempt_count}회</span>
+        {/* 시도가 하나도 없으면 "0회" 대신 "아직 시도 없음" (D-144) */}
+        <span>{item.attempt_count === 0 ? '아직 시도 없음' : `시도 ${item.attempt_count}회`}</span>
         {item.tags.map((tag) => (
           <span key={tag.id} className="record-tag">
             #{tag.name}
           </span>
         ))}
       </span>
-      {snippetFrom && item.match_snippet && (
+      {showSnippet && snippetFrom && (
         <span className="match-snippet">
-          {MATCH_ICONS[snippetFrom]} <Highlighted text={item.match_snippet} query={query} />
+          {MATCH_ICONS[snippetFrom]} <Highlighted text={item.match_snippet ?? ''} query={query} />
         </span>
       )}
     </span>
@@ -225,8 +239,12 @@ function RecordList({ items, backTo, flat = false, query }: Props) {
     <div className="record-list">
       {groups.map((group) => (
         <section key={group.date} aria-label={dateLabel(group.date)}>
-          <h2 className="record-date">
-            {dateLabel(group.date)} <span className="record-date-count">{group.rows.length}개</span>
+          {/* 날짜는 카드 왼쪽 칸에 둔다(D-134). 날짜와 요일은 한 줄, 개수는 그 아래 */}
+          <h2 className="record-date" aria-label={`${dateLabel(group.date)}, ${group.rows.length}개`}>
+            <span className="record-date-day">
+              {dateParts(group.date).day} <span className="record-date-week">({dateParts(group.date).weekday})</span>
+            </span>
+            <span className="record-date-count">{group.rows.length}개</span>
           </h2>
           <ul className="record-items">
             {group.rows.map((row) => (
