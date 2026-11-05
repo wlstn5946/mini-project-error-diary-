@@ -139,6 +139,16 @@
   transition: background-color 0.12s var(--ease);
 }
 
+.tag-recommend-chip.is-new {
+  border-style: dashed;
+}
+
+.tag-recommend-new {
+  margin-left: 6px;
+  color: var(--ink-muted, var(--ink-sub));
+  font-size: var(--fs-xs, 0.75em);
+}
+
 .tag-recommend-chip:hover {
   background: var(--surface-sub);
 }

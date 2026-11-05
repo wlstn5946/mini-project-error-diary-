@@ -1,5 +1,5 @@
 // 에러 메시지를 읽고 내 태그 중에서 붙일 만한 태그를 추천한다 (규칙 기반, D-120).
-// 화면 코드와 섞지 않는 순수 함수만 둔다. Gemini·새 API 없이 이미 불러온 태그 목록(A-004, 별칭 포함)만 쓴다.
+// 화면 코드와 섞지 않는 순수 함수만 둔다. ①~④는 새 API 없이 이미 불러온 태그 목록(A-004, 별칭 포함)만 쓴다. ⑤만 AI가 추천한 이름(A-026, D-131)을 받아 쓴다.
 import { keyLine } from '../../errorText'
 import type { Tag } from './tagsApi'
 
@@ -13,7 +13,8 @@ export function tagKey(name: string) {
   return normalizeTag(name).toLowerCase()
 }
 
-export type Recommendation = { tag: { id: number; name: string }; reason: string }
+// id가 null이면 아직 DB에 없는 새 태그 (AI가 추천한 이름, D-131)
+export type Recommendation = { tag: { id: number | null; name: string }; reason: string }
 
 type Input = {
   message: string
@@ -22,6 +23,8 @@ type Input = {
   similarTags: { id: number; name: string }[]
   chosenKeys: ReadonlySet<string>
   max: number
+  // ⑤ AI가 추천한 태그 이름 (D-131). 없으면 ①~④만 쓴다.
+  aiTags?: string[]
 }
 
 const HANGUL = /[ㄱ-ㆎ가-힣]/
@@ -57,12 +60,12 @@ function quotedNames(line: string): string[] {
   return out.filter((s) => s !== '')
 }
 
-// 근거 순서: ① 비슷한 기록 → ② 이름 → ③ 별칭 → ④ 핵심 줄의 따옴표 안 이름.
+// 근거 순서: ① 비슷한 기록 → ② 이름 → ③ 별칭 → ④ 핵심 줄의 따옴표 안 이름 → ⑤ AI 추천.
 // 같은 태그는 가장 앞 근거 하나로 한 번만 보여준다. 이미 붙인 태그는 뺀다.
-export function recommendTags({ message, allTags, similarTags, chosenKeys, max }: Input): Recommendation[] {
+export function recommendTags({ message, allTags, similarTags, chosenKeys, max, aiTags = [] }: Input): Recommendation[] {
   const result: Recommendation[] = []
   const seen = new Set<string>(chosenKeys)
-  const add = (tag: { id: number; name: string }, reason: string) => {
+  const add = (tag: { id: number | null; name: string }, reason: string) => {
     const key = tagKey(tag.name)
     if (seen.has(key)) return
     seen.add(key)
@@ -101,6 +104,15 @@ export function recommendTags({ message, allTags, similarTags, chosenKeys, max }
         if (hit) add(t, `핵심 줄의 이름 '${hit}'와(과) 같아요`)
       }
     }
+  }
+
+  // ⑤ AI 추천. 이름이나 별칭이 내 태그와 같으면 그 태그로, 아니면 새 태그(id null)로 보여준다. 누르기 전에는 붙지 않는다.
+  for (const raw of aiTags) {
+    const name = normalizeTag(raw)
+    if (!name) continue
+    const key = tagKey(name)
+    const mine = allTags.find((t) => tagKey(t.name) === key) ?? allTags.find((t) => t.aliases.some((a) => tagKey(a.name) === key))
+    add(mine ?? { id: null, name }, 'AI가 에러를 보고 추천했어요')
   }
 
   return result.slice(0, max)

@@ -26,6 +26,7 @@ import {
   type PreviousAttempt,
   type Suggestion,
 } from '../features/solve/solveApi'
+import { useAiTagSuggestions } from '../features/solve/useAiTagSuggestions'
 import { useFeedback } from '../features/solve/useFeedback'
 import { parseRetryId, useRetryRecord, type RetryState } from '../features/solve/useRetryRecord'
 import '../features/solve/solve.css'
@@ -121,6 +122,7 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
   const searchShown = !locked && message ? similar : null
   const searchPending = !locked && message !== '' && similar?.query !== message
   const matches = searchShown?.items ?? []
+  const aiTags = useAiTagSuggestions(searchShown?.query ?? '') // 입력 후 약 1초, 같은 글은 다시 부르지 않는다 (D-131)
 
   // 뒤로 가기로 흐름을 버린 뒤 늦게 도착한 AI 응답을 버리기 위한 번호
   const suggestSeq = useRef(0)
@@ -339,7 +341,7 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
         ) : (
           <>
             <SeriesSelect onChange={setSeriesChoice} disabled={locked} />
-            <TagInput onChange={setTagsValue} disabled={locked} suggestedTags={matches.flatMap((m) => m.tags)} errorText={searchShown?.query ?? ''} />
+            <TagInput onChange={setTagsValue} disabled={locked} suggestedTags={matches.flatMap((m) => m.tags)} errorText={searchShown?.query ?? ''} aiTags={aiTags} />
           </>
         )}
       </div>

@@ -6,7 +6,7 @@ import './TagInput.css'
 // 에러 입력 시 태그 지정 (R-001, D-006). 시안 에러해결창_예시.png ①의 "태그 (최대 5개)" 부분.
 // 새 태그는 여기서 저장하지 않고 이름만 부모에게 넘긴다. 에러를 저장할 때 함께 만든다. (D-020)
 // 추천 태그: 비슷한 기록의 태그(D-081)와, 에러 메시지에서 규칙으로 찾은 내 태그(D-120)를 추천 칩으로 보여준다.
-// 새 태그 이름은 만들어 추천하지 않고, 누르기 전에는 태그가 붙지 않는다. 계산은 tagRecommend.ts.
+// AI가 추천한 이름(D-131)은 내 태그에 없으면 "새 태그" 칩으로 보인다. 누르기 전에는 태그가 붙지 않는다. 계산은 tagRecommend.ts.
 
 // 에러 저장(A-002) 요청에 그대로 쓸 모양: 기존 태그는 ID, 새 태그는 이름
 export type TagsValue = {
@@ -24,6 +24,8 @@ type Props = {
   suggestedTags?: { id: number; name: string }[]
   // 추천에 쓸 에러 메시지(입력이 멈춘 뒤의 값). 없으면 비슷한 기록의 태그만 추천한다 (D-120)
   errorText?: string
+  // AI가 추천한 태그 이름 (A-026, D-131). 추천 칩 줄 끝에 더한다. 새 이름이면 누를 때 새 태그로 붙는다.
+  aiTags?: string[]
 }
 
 type Status = 'loading' | 'ready' | 'error'
@@ -38,7 +40,7 @@ const MAX_SUGGESTIONS = 8
 const MAX_RECOMMENDED = 5 // D-120
 
 
-function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [], errorText = '' }: Props) {
+function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [], errorText = '', aiTags = [] }: Props) {
   const [status, setStatus] = useState<Status>('loading')
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [reloadKey, setReloadKey] = useState(0)
@@ -90,6 +92,7 @@ function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [],
           similarTags: suggestedTags,
           chosenKeys,
           max: MAX_RECOMMENDED,
+          aiTags,
         })
 
   function update(next: Chip[]) {
@@ -209,13 +212,14 @@ function TagInput({ onChange, disabled = false, initialTags, suggestedTags = [],
           <span className="hint">추천 태그</span>
           {recommended.map(({ tag: t, reason }) => (
             <button
-              key={t.id}
+              key={tagKey(t.name)}
               type="button"
-              className="tag-recommend-chip"
+              className={t.id === null ? 'tag-recommend-chip is-new' : 'tag-recommend-chip'}
               title={reason}
               onClick={() => addTag(t.name)}
             >
               + {t.name}
+              {t.id === null && <span className="tag-recommend-new">새 태그</span>}
             </button>
           ))}
         </div>
