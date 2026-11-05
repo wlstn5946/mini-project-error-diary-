@@ -8,6 +8,8 @@
   --surface-sub: #f2f4f7;
   --line: #e6e8ec;
   --line-strong: #d5d9e0;
+  /* 내 말(한 줄 정리) 형광펜. 상태 색이 아니다 (D-153) */
+  --note: #ffe97a;
   --ink: #16181d;
   --ink-sub: #5b6270;
   --ink-faint: #8a919e;
@@ -826,4 +828,13 @@ textarea::placeholder {
     flex-wrap: wrap;
     gap: 0 24px;
   }
+}
+
+/* 한 줄 정리 글자 형광펜: 글자 아래쪽만 칠하고, 줄이 바뀌어도 줄마다 칠한다 (D-153) */
+.note-mark {
+  padding: 0 2px;
+  background: linear-gradient(transparent 58%, var(--note) 58%, var(--note) 92%, transparent 92%);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  font-weight: 500;
 }

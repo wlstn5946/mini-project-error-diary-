@@ -92,7 +92,10 @@ export function RecordItemContent({ item, showDate = false, showSeries = true, r
       </span>
       {showSummary && (
         <span className="record-summary" title={item.summary ?? undefined}>
-          💡 <Highlighted text={item.summary ?? ''} query={query} />
+          💡{' '}
+          <span className="note-mark">
+            <Highlighted text={item.summary ?? ''} query={query} />
+          </span>
         </span>
       )}
       <span className="record-meta">

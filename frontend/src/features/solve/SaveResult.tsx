@@ -66,7 +66,9 @@ function SaveResult({ saved, feedback, feedbackStatus, onRequestFeedback, onSumm
       {saved.summary && (
         <div className="resolved-summary">
           <p className="ai-label">내 한 줄 정리</p>
-          <p className="ai-text">{saved.summary}</p>
+          <p className="ai-text">
+            <span className="note-mark">{saved.summary}</span>
+          </p>
         </div>
       )}
 

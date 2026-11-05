@@ -124,6 +124,21 @@
 
 /* 날짜별 묶음: 왼쪽에 날짜 칸, 오른쪽에 카드 패널 (D-134). 날짜 칸은 묶음이 길면 스크롤해도 위에 붙어 따라온다.
    좁은 화면(480px 이하)에서는 날짜를 카드 위 한 줄로 되돌린다. */
+/* 날짜 칸 오른쪽 세로선: 묶음 사이 간격에서도 끊기지 않게 목록 전체를 감싸는 .record-list의 ::before 하나로 그린다 (D-153). 104px 칸과 12px 간격의 가운데(110px)에 둔다 */
+.record-list {
+  position: relative;
+}
+
+.record-list::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 110px;
+  width: 1px;
+  background: var(--line-strong);
+}
+
 .record-list > section {
   display: grid;
   grid-template-columns: 104px minmax(0, 1fr);
@@ -155,6 +170,10 @@
 }
 
 @media (max-width: 480px) {
+  .record-list::before {
+    display: none;
+  }
+
   .record-list > section {
     display: block;
     margin-top: 20px;
@@ -1042,6 +1061,12 @@
   body.printing-record .detail-label {
     break-after: avoid;
   }
+
+  /* 형광펜 배경은 빼고 굵기만 남긴다 (D-153) */
+  body.printing-record .note-mark {
+    background: none;
+    font-weight: 600;
+  }
 }
 
 /* 재사용 기록 묶기 (D-081): 원본 줄 오른쪽 끝의 "재사용 N" 배지와 접힌 재사용 기록 */
@@ -1174,8 +1199,10 @@ button.reuse-badge:hover {
 
 .record-summary mark {
   padding: 0;
-  background: var(--warn-bg);
+  background: none;
   color: inherit;
+  text-decoration: underline 2px var(--accent);
+  text-underline-offset: 3px;
 }
 
 .match-snippet {
@@ -1361,6 +1388,11 @@ a.insight-card:hover {
 .insight-bar-fill {
   display: block;
   height: 100%;
+  /* 최댓값이 아닌 줄은 옅게 (D-153) */
+  background: color-mix(in srgb, var(--danger-fg) 40%, white);
+}
+
+.insight-bar-fill.is-top {
   background: var(--danger-fg);
 }
 

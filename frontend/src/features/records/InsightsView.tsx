@@ -157,7 +157,7 @@ function InsightsView() {
                 <Link className="insight-tag-row" to={`/records?tag_id=${t.id}&status=unresolved`}>
                   <span className="insight-tag-name">{t.name}</span>
                   <span className="insight-bar" aria-hidden="true">
-                    <span className="insight-bar-fill" style={{ width: `${maxUnresolved > 0 ? (t.unresolved / maxUnresolved) * 100 : 0}%` }} />
+                    <span className={t.unresolved === maxUnresolved ? 'insight-bar-fill is-top' : 'insight-bar-fill'} style={{ width: `${maxUnresolved > 0 ? (t.unresolved / maxUnresolved) * 100 : 0}%` }} />
                   </span>
                   <span className="insight-tag-count">
                     {t.unresolved}건 · 전체 {t.total}

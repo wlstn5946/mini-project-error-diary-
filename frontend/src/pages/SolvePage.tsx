@@ -402,6 +402,7 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
             {matches.length > 0 && (
               <SimilarRecords
                 matches={matches}
+                myErrorMessage={errorMessage}
                 busy={searchPending || saving || seriesChoice === null}
                 onApply={applyMatch}
               />
@@ -529,7 +530,7 @@ function AppliedRecordCard({ match }: { match: SimilarError }) {
       </h3>
       <p className="similar-meta">{title}</p>
       <p className="similar-solution">
-        💡 <strong>해결법:</strong> {match.summary}
+        💡 <strong>해결법:</strong> <span className="note-mark">{match.summary}</span>
       </p>
       <div className="similar-actions">
         <Link
