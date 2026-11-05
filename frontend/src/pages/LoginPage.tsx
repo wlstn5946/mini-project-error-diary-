@@ -1,3 +1,4 @@
+import logo from '../assets/mascot/logo.svg'
 import { useState, type FormEvent } from 'react'
 import { Link, useLocation } from 'react-router'
 import { ApiError } from '../api'
@@ -41,7 +42,10 @@ function LoginPage() {
   return (
     <main className="auth-page auth-page--login">
       <div className="auth-card">
-        <div className="auth-brand">🛠 에러 일기</div>
+        <div className="auth-brand brand-logo">
+          <img src={logo} alt="" aria-hidden="true" width={24} height={24} />
+          에러 일기
+        </div>
         <h1 className="page-title">로그인</h1>
         <form onSubmit={handleSubmit}>
           {registered && !error && (

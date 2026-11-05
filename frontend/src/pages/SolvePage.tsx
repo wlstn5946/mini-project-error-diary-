@@ -1,3 +1,4 @@
+import Mascot from '../components/Mascot'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { keyLine } from '../errorText'
@@ -467,9 +468,12 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
           {locked && !saved && (
             <>
               {loading && (
-                <p className="empty">
-                  {collected.length ? '✨ AI가 다음 방법을 찾는 중이에요…' : '✨ AI가 에러를 분석하는 중이에요…'}
-                </p>
+                <>
+                  <Mascot name="ai-loading" size={160} />
+                  <p className="empty">
+                    {collected.length ? '✨ AI가 다음 방법을 찾는 중이에요…' : '✨ AI가 에러를 분석하는 중이에요…'}
+                  </p>
+                </>
               )}
               {result?.status === 'unavailable' && collected.length > 0 && (
                 <p className="attempt-notice">시도는 화면에 모아 뒀어요. &quot;기록 저장&quot;을 누르면 함께 저장돼요.</p>

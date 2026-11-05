@@ -1,3 +1,4 @@
+import foundBulb from '../../assets/mascot/found-bulb.svg'
 import { useRef, useState } from 'react'
 import { keyLine } from '../../errorText'
 import type { SimilarError } from './errorsApi'
@@ -35,7 +36,7 @@ function SimilarRecords({ matches, busy, myErrorMessage, onApply }: Props) {
     <>
       <section className="similar-box" aria-labelledby="similar-title">
         <h2 id="similar-title" className="similar-heading">
-          📂 비슷한 기존 기록 {matches.length}건을 찾았어요
+          <img className="similar-bulb" src={foundBulb} alt="" aria-hidden="true" width={20} height={20} /> 비슷한 기존 기록 {matches.length}건을 찾았어요
         </h2>
         <div className="similar-list" tabIndex={0} aria-label="비슷한 기존 기록 목록">
           {matches.map((m) => {

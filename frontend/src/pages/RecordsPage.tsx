@@ -1,3 +1,4 @@
+import Mascot from '../components/Mascot'
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 import { listErrors, type ErrorFilters, type ErrorListItem, type ErrorStatus } from '../features/records/errorsApi'
@@ -192,12 +193,15 @@ function RecordsPage() {
   const recordListArea = loading ? (
     <p className="record-state">불러오는 중…</p>
   ) : result.items === null ? (
-    <p className="record-state record-error">
-      기록을 불러오지 못했어요.
-      <button type="button" className="btn-secondary" onClick={() => setReloadKey((k) => k + 1)}>
-        다시 시도
-      </button>
-    </p>
+    <>
+      <Mascot name="error-sign" size={120} />
+      <p className="record-state record-error">
+        기록을 불러오지 못했어요.
+        <button type="button" className="btn-secondary" onClick={() => setReloadKey((k) => k + 1)}>
+          다시 시도
+        </button>
+      </p>
+    </>
   ) : result.items.length === 0 ? (
     tagView ? (
       <p className="record-state">고른 태그를 모두 가진 기록이 없어요.</p>
@@ -211,12 +215,15 @@ function RecordsPage() {
         </button>
       </p>
     ) : (
-      <p className="record-state">
-        아직 기록이 없어요. 에러 해결에서 첫 에러를 입력해 보세요.
-        <Link className="btn-primary" to="/solve">
-          에러 해결로
-        </Link>
-      </p>
+      <>
+        <Mascot name="error-sign" size={120} />
+        <p className="record-state">
+          아직 기록이 없어요. 에러 해결에서 첫 에러를 입력해 보세요.
+          <Link className="btn-primary" to="/solve">
+            에러 해결로
+          </Link>
+        </p>
+      </>
     )
   ) : (
     <RecordList items={result.items} backTo={location.pathname + location.search} flat={tagView} query={tagView ? undefined : filters.q.trim()} />

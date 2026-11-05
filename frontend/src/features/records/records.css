@@ -1062,6 +1062,11 @@
     break-after: avoid;
   }
 
+  /* 캐릭터 그림은 인쇄에서 숨긴다 (D-154) */
+  body.printing-record .mascot {
+    display: none;
+  }
+
   /* 형광펜 배경은 빼고 굵기만 남긴다 (D-153) */
   body.printing-record .note-mark {
     background: none;

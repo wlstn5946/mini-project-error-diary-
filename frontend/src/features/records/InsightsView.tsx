@@ -1,3 +1,4 @@
+import Mascot from '../../components/Mascot'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { getInsights, type Insights, type RateItem } from './insightsApi'
@@ -40,12 +41,15 @@ function InsightsView() {
 
   if (failed) {
     return (
-      <p className="record-state record-error">
-        통계를 불러오지 못했어요.
-        <button type="button" className="btn-secondary" onClick={() => setReloadKey((k) => k + 1)}>
-          다시 시도
-        </button>
-      </p>
+      <>
+        <Mascot name="error-sign" size={120} />
+        <p className="record-state record-error">
+          통계를 불러오지 못했어요.
+          <button type="button" className="btn-secondary" onClick={() => setReloadKey((k) => k + 1)}>
+            다시 시도
+          </button>
+        </p>
+      </>
     )
   }
   if (!data) return <p className="record-state">불러오는 중…</p>

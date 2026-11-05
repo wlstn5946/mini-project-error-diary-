@@ -1,3 +1,4 @@
+import Mascot from '../../components/Mascot'
 import { Link } from 'react-router'
 import type { ErrorDetail } from '../records/errorsApi'
 import '../records/TagInput.css'
@@ -15,6 +16,9 @@ type NoticeProps = {
 export function RetryNotice({ state, onNewError }: NoticeProps) {
   if (state.status === 'loading') return <p className="empty">기록을 불러오는 중…</p>
   return (
+    <>
+      {/* 화면 단위 실패에만 캐릭터를 둔다 (D-154) */}
+      {state.status === 'error' && <Mascot name="error-sign" size={120} />}
     <p className="locked-notice" role="status">
       {state.status === 'not-found' && (
         <>
@@ -44,6 +48,7 @@ export function RetryNotice({ state, onNewError }: NoticeProps) {
         </>
       )}
     </p>
+    </>
   )
 }
 
