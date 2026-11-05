@@ -115,11 +115,6 @@
   margin-top: auto;
 }
 
-/* a 태그 밑줄을 없애고 btn-secondary 모양 그대로 */
-.similar-diary-link {
-  text-decoration: none;
-}
-
 /* "해당 없음 → AI에게 묻기": 위 24px 띄우고 오른쪽 정렬 */
 .similar-footer {
   display: flex;

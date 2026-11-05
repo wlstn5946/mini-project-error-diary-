@@ -1,8 +1,9 @@
-import { Link } from 'react-router'
+import { useRef, useState } from 'react'
 import { keyLine } from '../../errorText'
 import type { SimilarError } from './errorsApi'
+import RecordPreviewPanel from './RecordPreviewPanel'
 
-// 비슷한 기존 기록 (시안 에러해결창_예시.png ①). "재사용 N회" 배지는 같은 해결법을 묶은 카드에 단다 (D-121). "에러 일기 보기"는 대표 기록(뿌리)의 상세를 새 탭으로 연다. 입력 중인 내용을 지키기 위해서다 (D-127).
+// 비슷한 기존 기록 (시안 에러해결창_예시.png ①). "재사용 N회" 배지는 같은 해결법을 묶은 카드에 단다 (D-121). "에러 일기 보기"는 대표 기록(뿌리)의 미리보기를 오른쪽 패널로 연다. 페이지를 떠나지 않아 입력 중인 내용이 지켜진다 (D-152, D-127 변경).
 // "이 방법 써 보기"는 저장하지 않고 시도 1로 시작한다 (D-128, D-069 변경).
 // "해당 없음 → AI에게 묻기" 버튼은 입력창 쪽(SolvePage)에 하나만 둔다 (D-064).
 // 목록은 유사도 높은 순으로 오고, 위 두 개만 보이며 나머지는 스크롤로 본다 (CSS .similar-list).
@@ -10,6 +11,8 @@ import type { SimilarError } from './errorsApi'
 type Props = {
   matches: SimilarError[]
   busy: boolean
+  // 지금 입력 중인 에러 메시지. 패널 비교 칸의 "내 에러"에 쓴다 (D-152)
+  myErrorMessage: string
   onApply: (match: SimilarError) => void
 }
 
@@ -19,7 +22,15 @@ function shortDate(iso: string): string {
   return `${Number(month)}/${Number(day)}`
 }
 
-function SimilarRecords({ matches, busy, onApply }: Props) {
+function SimilarRecords({ matches, busy, myErrorMessage, onApply }: Props) {
+  const [previewing, setPreviewing] = useState<SimilarError | null>(null)
+  // 패널을 닫으면 포커스를 누른 버튼으로 돌려준다
+  const opener = useRef<HTMLElement | null>(null)
+  const closePreview = () => {
+    setPreviewing(null)
+    opener.current?.focus()
+  }
+
   return (
     <>
       <section className="similar-box" aria-labelledby="similar-title">
@@ -51,28 +62,38 @@ function SimilarRecords({ matches, busy, onApply }: Props) {
                   ))}
                 </p>
                 <p className="similar-solution">
-                  💡 <strong>해결법:</strong> {m.summary}
+                  💡 <strong>해결법:</strong> <span className="note-mark">{m.summary}</span>
                 </p>
                 <div className="similar-actions">
                   <button type="button" className="btn-apply" disabled={busy} onClick={() => onApply(m)}>
                     ✔ 같은 에러예요, 이 방법 써 보기
                   </button>
-                  {/* 새 탭: 같은 탭으로 이동하면 아직 저장하지 않은 입력이 사라진다 (D-127). 읽기만 하므로 busy여도 막지 않는다 */}
-                  <Link
-                    className="btn-secondary similar-diary-link"
-                    to={`/records/${m.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label="에러 일기 보기 (새 탭에서 열림)"
+                  {/* 읽기만 하므로 busy여도 막지 않는다 (D-152) */}
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={(e) => {
+                      opener.current = e.currentTarget
+                      setPreviewing(m)
+                    }}
                   >
-                    에러 일기 보기 ↗
-                  </Link>
+                    에러 일기 보기
+                  </button>
                 </div>
               </article>
             )
           })}
         </div>
       </section>
+      {previewing && (
+        <RecordPreviewPanel
+          match={previewing}
+          myErrorMessage={myErrorMessage}
+          busy={busy}
+          onApply={onApply}
+          onClose={closePreview}
+        />
+      )}
     </>
   )
 }

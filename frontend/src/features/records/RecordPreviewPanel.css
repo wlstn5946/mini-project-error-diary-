@@ -1,0 +1,129 @@
+/* 비슷한 기록 미리보기 패널 (S-001, D-152). 색은 index.css 토큰만 쓴다 (D-109). */
+
+.preview-panel {
+  /* <dialog> 기본 여백·테두리·최대 크기 초기화 */
+  margin: 0 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--line-strong);
+  width: min(480px, 44vw);
+  max-width: none;
+  height: 100vh;
+  max-height: 100vh;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+}
+
+/* 열려 있을 때만 flex로 (닫힌 dialog는 display:none이어야 한다) */
+.preview-panel[open] {
+  display: flex;
+  flex-direction: column;
+  animation: preview-slide-in 200ms var(--ease);
+}
+
+.preview-panel::backdrop {
+  background: rgba(16, 24, 40, 0.18);
+}
+
+@keyframes preview-slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preview-panel[open] {
+    animation: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .preview-panel {
+    width: 100%;
+    border-left: 0;
+  }
+}
+
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.preview-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.preview-close {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-sub);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.preview-close:hover {
+  background: var(--surface-sub);
+}
+
+.preview-compare {
+  display: grid;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.preview-compare .detail-label {
+  margin: 0 0 4px;
+}
+
+/* 핵심 줄 한 줄 모양: 길면 줄바꿈 */
+.preview-line {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 머리·바닥은 고정, 본문만 스크롤 */
+.preview-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.preview-state {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.detail-fulltext summary {
+  margin-bottom: 8px;
+  color: var(--ink-sub);
+  cursor: pointer;
+}
+
+.preview-foot {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
