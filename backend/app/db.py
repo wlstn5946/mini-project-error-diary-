@@ -5,12 +5,14 @@ from collections.abc import Iterator
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.config import DATABASE_URL
 
-# DB 서버를 다시 켰거나 원격(Supabase) 연결이 끊긴 경우를 위해 꺼내기 전에 확인한다.
+# Vercel 함수는 인스턴스마다 연결 풀을 쥐면 Supabase 연결 수가 차므로 풀을 두지 않는다(요청마다 연결, 끝나면 닫음).
+# 그래서 꺼내기 전 확인(pool_pre_ping)도 필요 없다.
 # Supabase transaction pooler(6543 포트)는 prepared statement를 지원하지 않아 psycopg의 자동 준비를 끈다.
-engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args={"prepare_threshold": None})
+engine = create_engine(DATABASE_URL, poolclass=NullPool, connect_args={"prepare_threshold": None})
 SessionLocal = sessionmaker(bind=engine)
 
 
