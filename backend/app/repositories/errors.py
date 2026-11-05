@@ -9,7 +9,7 @@ mark_resolved()는 팀원 2가 해결 처리(A-006)용으로 추가했다. (D-03
 from datetime import datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.models import KST, Attempt, ErrorRecord, ErrorTag, Series, Tag, now_kst
@@ -67,6 +67,68 @@ def count_reused_resolved(db: Session, *, user_id: int) -> int:
         ErrorRecord.user_id == user_id, ErrorRecord.status == "resolved", ErrorRecord.reused_from_id.is_not(None)
     )
     return db.scalar(query) or 0
+
+
+def count_errors_by_tag_and_status(db: Session, *, user_id: int) -> dict[int, tuple[int, int]]:
+    """태그 id별 (전체, 미해결) 기록 수. 기록이 없는 태그는 키가 없다. 통계 탭(A-025, D-129)용."""
+    query = (
+        select(
+            ErrorTag.tag_id,
+            func.count(),
+            func.coalesce(func.sum(case((ErrorRecord.status == "unresolved", 1), else_=0)), 0),
+        )
+        .join(ErrorRecord, ErrorRecord.id == ErrorTag.error_id)
+        .join(Tag, Tag.id == ErrorTag.tag_id)
+        .where(ErrorRecord.user_id == user_id, Tag.user_id == user_id)
+        .group_by(ErrorTag.tag_id)
+    )
+    return {tag_id: (int(total), int(unresolved)) for tag_id, total, unresolved in db.execute(query)}
+
+
+def count_apply_attempts(db: Session, since: str, *, user_id: int) -> tuple[int, int]:
+    """"기존 기록 #N의 해결 방법 적용" 시도 중 since 이후 것의 (전체, solved) 수. 내 기록의 시도만. (D-129)
+
+    created_at은 한국 시간 ISO 8601이라 문자열 비교가 시간순 비교와 같다. (D-015)
+    집계 조건은 그것을 만드는 함수가 읽는다는 D-126 해석에 따라 attempts 테이블을 여기서 읽는다.
+    """
+    query = (
+        select(func.count(), func.coalesce(func.sum(case((Attempt.result == "solved", 1), else_=0)), 0))
+        .select_from(Attempt)
+        .join(ErrorRecord, ErrorRecord.id == Attempt.error_id)
+        .where(
+            ErrorRecord.user_id == user_id,
+            Attempt.action.like("기존 기록 #%의 해결 방법 적용"),
+            Attempt.created_at >= since,
+        )
+    )
+    total, solved = db.execute(query).one()
+    return int(total), int(solved)
+
+
+def avg_attempts_fresh_resolved(db: Session, *, user_id: int) -> float | None:
+    """해결됨 + reused_from_id가 없는 기록의 시도 수 평균. 해당 기록이 없으면 None. (D-129)"""
+    per_error = (
+        select(func.count(Attempt.id).label("n"))
+        .select_from(ErrorRecord)
+        .join(Attempt, Attempt.error_id == ErrorRecord.id)
+        .where(ErrorRecord.user_id == user_id, ErrorRecord.status == "resolved", ErrorRecord.reused_from_id.is_(None))
+        .group_by(ErrorRecord.id)
+        .subquery()
+    )
+    value = db.scalar(select(func.avg(per_error.c.n)))
+    return None if value is None else float(value)
+
+
+def list_messages_for_grouping(db: Session, *, user_id: int) -> list[tuple[int, str, str, str, int | None]]:
+    """자주 만나는 에러 묶기용: (id, error_message, created_at, status, reused_from_id) 전체. 최근 등록순. 묶기는 라우터가 한다. (D-129)"""
+    query = (
+        select(
+            ErrorRecord.id, ErrorRecord.error_message, ErrorRecord.created_at, ErrorRecord.status, ErrorRecord.reused_from_id
+        )
+        .where(ErrorRecord.user_id == user_id)
+        .order_by(ErrorRecord.created_at.desc(), ErrorRecord.id.desc())
+    )
+    return [(i, m, c, st, r) for i, m, c, st, r in db.execute(query)]
 
 
 def get_reuse_root_id(db: Session, source_id: int, error_id: int | None = None, *, user_id: int) -> int:

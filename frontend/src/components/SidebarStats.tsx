@@ -5,7 +5,7 @@ import StaleDot from './StaleDot'
 
 // 사이드바 대시보드 (시안 내기록창_예시.png의 "에러 기록 N개 · 해결 · 미해결 · 재사용 해결", D-074).
 // 한 칸에 한 줄씩 4칸이다. 에러 기록·해결·미해결은 누르면 내 기록의 전체·해결·미해결 보기로 간다.
-// 재사용 해결은 모아 보는 필터가 없어서 이동 없이 표시만 한다.
+// 재사용 해결은 모아 보는 필터가 없어서 내 기록의 통계 탭으로 간다 (D-129).
 // 개수는 화면을 옮길 때, 창에 다시 돌아왔을 때, 기록이 저장·삭제됐을 때 다시 불러온다. 실패하면 이전 값(없으면 "-")을 둔다.
 
 type Tone = 'all' | 'resolved' | 'unresolved' | 'reuse'
@@ -60,7 +60,7 @@ function SidebarStats() {
       to: '/records?status=unresolved',
       staleCount: stats?.stale_unresolved ?? 0,
     },
-    { key: 'reuse', label: '재사용 해결', unit: '회', value: stats?.reused_resolved ?? null },
+    { key: 'reuse', label: '재사용 해결', unit: '회', value: stats?.reused_resolved ?? null, to: '/records?view=stats' },
   ]
 
   return (

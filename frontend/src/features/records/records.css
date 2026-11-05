@@ -1102,3 +1102,185 @@ button.reuse-badge:hover {
   background: var(--warn-bg);
   color: inherit;
 }
+
+/* 통계 탭 (D-129). 색·크기는 index.css 토큰만 쓴다. */
+.insights {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.insight-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .insight-cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.insight-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+a.insight-card:hover {
+  border-color: var(--line-strong);
+}
+
+.insight-card:focus-visible,
+.insight-top-row:focus-visible,
+.insight-tag-row:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.insight-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
+}
+
+.insight-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--danger-fg);
+}
+
+.insight-big {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+
+.insight-sub,
+.insight-few {
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+  font-weight: 400;
+}
+
+.insight-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.insight-title {
+  margin: 0;
+  font-size: var(--fs-md);
+}
+
+.insight-empty {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+.insight-top,
+.insight-top-records,
+.insight-tags {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.insight-top-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.insight-top-title {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insight-top-meta {
+  flex: none;
+  color: var(--ink-sub);
+  font-size: var(--fs-xs);
+}
+
+.insight-top-records {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px 4px 24px;
+  font-size: var(--fs-sm);
+}
+
+.insight-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.insight-tag-row {
+  display: grid;
+  grid-template-columns: minmax(60px, 120px) 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  border-radius: var(--radius-control);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  text-decoration: none;
+}
+
+.insight-tag-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insight-bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--surface-sub);
+}
+
+.insight-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--danger-fg);
+}
+
+.insight-tag-count {
+  color: var(--ink-sub);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.insight-avg {
+  margin: 0;
+  color: var(--ink-sub);
+  font-size: var(--fs-sm);
+}

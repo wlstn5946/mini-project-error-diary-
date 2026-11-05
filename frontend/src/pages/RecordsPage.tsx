@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router'
 import { listErrors, type ErrorFilters, type ErrorListItem, type ErrorStatus } from '../features/records/errorsApi'
+import InsightsView from '../features/records/InsightsView'
 import RecordFilters from '../features/records/RecordFilters'
 import RecordList from '../features/records/RecordList'
 import SeriesView from '../features/records/SeriesView'
@@ -11,15 +12,16 @@ import '../features/records/records.css'
 // S-002 내 기록 (R-005, D-035, SCREEN-SPEC_6). 담당 팀원 1 (D-039).
 // 필터 값은 URL 쿼리(?status=…&tag_id=…&q=…)에 둔다. 상세에 갔다가 뒤로 와도 필터가 남는다 (D-036).
 // 태그 관리는 태그별 탭, 시리즈 수정·삭제는 시리즈별 탭에서 한다 (D-062, D-063).
-// 탭은 날짜별 / 태그별 / 시리즈별이고 주소 쿼리(?view=tag, ?view=series&series_id=N)에 둔다 (D-042, D-055).
+// 탭은 날짜별 / 태그별 / 시리즈별 / 통계이고 주소 쿼리(?view=tag, ?view=series&series_id=N, ?view=stats)에 둔다 (D-042, D-055, D-129).
 // 태그별 탭은 고른 태그(tag_id)만으로 거르고, 시리즈별 탭에서는 검색·상태·태그 필터를 숨긴다.
 
-type View = 'date' | 'tag' | 'series'
+type View = 'date' | 'tag' | 'series' | 'stats'
 
 const VIEW_TABS: { view: View; label: string }[] = [
   { view: 'date', label: '날짜별' },
   { view: 'tag', label: '태그별' },
   { view: 'series', label: '시리즈별' },
+  { view: 'stats', label: '통계' },
 ]
 
 // 검색은 입력이 멈추고 잠시 뒤에 요청한다
@@ -52,7 +54,8 @@ function RecordsPage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [result, setResult] = useState<ListResult | null>(null)
 
-  const view: View = params.get('view') === 'series' ? 'series' : params.get('view') === 'tag' ? 'tag' : 'date'
+  const rawView = params.get('view')
+  const view: View = rawView === 'series' || rawView === 'tag' || rawView === 'stats' ? rawView : 'date'
   const seriesView = view === 'series'
   const tagView = view === 'tag'
   const rawSeriesId = Number(params.get('series_id'))
@@ -101,7 +104,7 @@ function RecordsPage() {
   // 이전 요청은 취소한다. 늦게 온 이전 응답이 최신 결과를 덮지 않게 하기 위해서다.
   useEffect(() => {
     const [keyFilters, , keyView] = JSON.parse(key) as [ErrorFilters, number, View]
-    if (keyView === 'series') return // 시리즈별 탭은 이 목록을 쓰지 않는다. 다른 탭으로 돌아오면 다시 불러온다.
+    if (keyView === 'series' || keyView === 'stats') return // 시리즈별·통계 탭은 이 목록을 쓰지 않는다. 다른 탭으로 돌아오면 다시 불러온다.
     // 태그별 탭에서 고른 태그가 없으면 묻지 않는다. 화면은 안내 문구를 따로 보여준다.
     if (keyView === 'tag' && keyFilters.tagIds.length === 0) return
     const controller = new AbortController()
@@ -240,7 +243,9 @@ function RecordsPage() {
         ))}
       </div>
 
-      {seriesView ? (
+      {view === 'stats' ? (
+        <InsightsView />
+      ) : seriesView ? (
         <SeriesView
           seriesId={seriesId}
           backTo={location.pathname + location.search}
