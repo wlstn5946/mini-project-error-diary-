@@ -317,6 +317,7 @@ a.stat.active .stat-value {
   }
 }
 
+/* 본문 오른쪽 위 카피바라(.corner-capybara)는 .content-inner 기준으로 놓는다 */
 .content {
   flex: 1;
   min-width: 0;
@@ -325,7 +326,9 @@ a.stat.active .stat-value {
 }
 
 /* 본문 내용은 최대 880px로 가운데 정렬한다 */
+/* position: 오른쪽 위 카피바라(.corner-capybara)의 기준 */
 .content-inner {
+  position: relative;
   max-width: 880px;
   margin: 0 auto;
 }
@@ -878,6 +881,24 @@ textarea::placeholder {
 /* 좁은 화면(사이드바가 위로 올라감)과 낮은 창에서는 계정 영역을 밀어내지 않게 숨긴다 */
 @media (max-width: 768px), (max-height: 560px) {
   .growth-plant {
+    display: none;
+  }
+}
+
+/* 본문 오른쪽 위 카피바라 (D-156): 본문 오른쪽 끝(에러 메시지 입력칸의 오른쪽 끝)에 맞추고, 아래 끝이 화면 제목 줄 아래(제목 36px + 간격 24px = 60px)에 닿게 위로 올려 둔다. 제목은 왼쪽 글자뿐이라 본문과 겹치지 않는다. 눌리지 않는다 */
+.corner-capybara {
+  position: absolute;
+  /* 사용자 요청: 오른쪽 끝에서 1cm 안쪽, 처음 위치에서 0.5cm 아래 */
+  top: calc(-33px + 0.5cm);
+  right: 1cm;
+  width: 160px;
+  height: auto;
+  pointer-events: none;
+}
+
+/* 좁은 화면은 본문 위 여백이 줄어(28px) 제목과 겹치므로 숨긴다 */
+@media (max-width: 768px) {
+  .corner-capybara {
     display: none;
   }
 }
