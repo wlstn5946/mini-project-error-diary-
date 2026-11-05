@@ -97,3 +97,14 @@ export async function createAttempts(errorId: number, body: AttemptsBody): Promi
   window.dispatchEvent(new Event(RECORDS_CHANGED_EVENT))
   return saved
 }
+
+// A-026 AI 태그 추천 (D-131). 실패해도 예외 없이 빈 배열이다. 추천 칩 줄에만 쓰이므로 안내 문구를 띄우지 않는다.
+export async function requestTagSuggestions(errorMessage: string, signal?: AbortSignal): Promise<string[] | null> {
+  try {
+    const res = await request('/api/ai-tag-suggestions', jsonInit('POST', { error_message: errorMessage }, signal))
+    const data = (await res.json()) as { status: 'ok' | 'unavailable'; tags: string[] }
+    return data.status === 'ok' && Array.isArray(data.tags) ? data.tags : null // null: 실패(캐시하지 않는다)
+  } catch {
+    return null
+  }
+}
