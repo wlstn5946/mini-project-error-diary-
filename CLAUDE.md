@@ -3,9 +3,9 @@
 > 이 문서는 작업 규칙만 담는다. 기능·요구사항·결정 이유는 문서 경로와 ID(R-, D-, Q-)로 가리킨다.
 
 ## 1. 프로젝트 소개
-- 에러 메시지를 입력하면 이전 해결 기록을 먼저 찾아 보여주고, 없으면 Gemini가 해결 방법을 제안하는 에러 해결 기록 앱 (상세: PRD 1절)
+- 에러 메시지를 입력하면 이전 해결 기록을 먼저 찾아 보여주고, 없으면 Claude가 해결 방법을 제안하는 에러 해결 기록 앱 (상세: PRD 1절)
 - 회원가입으로 여러 계정을 만들고, 계정마다 자기 기록만 본다 (D-082)
-- 기술 스택: FastAPI + React(Vite, TypeScript) + PostgreSQL(로컬, 배포 직전 Supabase) + Gemini API (D-001, D-057, D-058, D-083)
+- 기술 스택: FastAPI + React(Vite, TypeScript) + PostgreSQL(로컬, 배포 직전 Supabase) + Claude API (D-001, D-057, D-058, D-083, D-130)
 
 ## 2. 문서 지도
 | 문서 | 역할 | 경로 |
@@ -48,7 +48,7 @@
 | 담당 | 기능 영역 | 관련 R- | 파일 경로 |
 |------|-----------|---------|-----------|
 | 팀원 1 (찾기·정리) | 에러 등록, 기존 기록 검색, 내 기록, 에러 일기 상세 (D-031) | R-001, R-002, R-005 | 백엔드: `backend/app/routers/records.py`, `backend/app/repositories/series.py`, `backend/app/repositories/tags.py`, `backend/app/repositories/errors.py` / 프론트: `frontend/src/features/records/`, `frontend/src/pages/RecordsPage.tsx`, `frontend/src/pages/RecordDetailPage.tsx` |
-| 팀원 2 (AI로 해결) | Gemini 연동, AI 제안, 시도 기록, 해결 처리 | R-003, R-004 | 백엔드: `backend/app/routers/solve.py`, `backend/app/repositories/attempts.py` / 프론트: `frontend/src/features/solve/` |
+| 팀원 2 (AI로 해결) | Claude 연동, AI 제안, 시도 기록, 해결 처리 | R-003, R-004 | 백엔드: `backend/app/routers/solve.py`, `backend/app/repositories/attempts.py` / 프론트: `frontend/src/features/solve/` |
 | 공용 | 공용 파일, 공통 컴포넌트 | - | 백엔드: `backend/app/main.py`, `backend/app/config.py`, `backend/app/db.py`, `backend/app/models.py`, `backend/app/routers/health.py`, `backend/app/routers/auth.py`(D-098), `backend/app/security.py`, `backend/app/error_text.py`(D-117), `backend/app/repositories/users.py`, `backend/app/repositories/sessions.py`, `backend/requirements.txt`, `.gitignore` / 프론트: `frontend/src/components/`, `frontend/src/api.ts`, `frontend/src/errorText.ts`(D-117), `frontend/src/App.tsx`, `frontend/src/main.tsx`, `frontend/src/index.css`, `frontend/vite.config.ts`, `frontend/src/pages/SolvePage.tsx`, `frontend/src/pages/NotFoundPage.tsx`, `frontend/src/features/auth/`(D-104), `frontend/src/pages/LoginPage.tsx`, `frontend/src/pages/RegisterPage.tsx` |
 
 - 프론트 폴더 구분은 D-012, `frontend/src/pages/`의 화면별 담당은 D-039를 따른다.
@@ -64,8 +64,8 @@
 ## 6. 코드 규칙
 - API 키는 `.env`에만 둔다. 코드·문서·로그에 키를 적지 않는다.
 - `.env`는 커밋하지 않는다. 키 이름만 담은 `.env.example`을 제공한다.
-- Gemini 응답의 JSON 파싱 실패 시에도 화면이 멈추지 않게 처리한다.
-- Gemini API 오류(시간 초과, 실패 응답 등) 시에도 화면이 멈추지 않게 처리한다.
+- Claude 응답의 JSON 파싱 실패 시에도 화면이 멈추지 않게 처리한다.
+- Claude API 오류(시간 초과, 실패 응답 등) 시에도 화면이 멈추지 않게 처리한다.
 - 프롬프트를 바꾸면 PROMPTS 최신 버전(`docs/PROMPTS/PROMPTS_N.md`)에 프롬프트·응답 JSON 형식·수정 이력을 기록한다.
 - 백엔드 실행 (`backend/`에서, Python 3.12, uv 사용):
   - 가상환경: `uv venv --python 3.12 .venv`
