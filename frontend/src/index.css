@@ -838,3 +838,46 @@ textarea::placeholder {
   box-decoration-break: clone;
   font-weight: 500;
 }
+
+/* 카피바라 캐릭터 그림 (D-154): 가운데 정렬, 아래 여백 12px. 움직임 없음 */
+.mascot {
+  display: block;
+  margin: 0 auto 12px;
+}
+
+/* 앱 이름·로그인 로고 그림: 글자와 세로 가운데, 간격 6px (D-154) */
+.brand-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.brand-logo img {
+  flex-shrink: 0;
+}
+
+/* 사이드바 성장 식물 (D-155): 하위 목록과 계정 영역 사이 남는 공간 가운데쯤. 누를 수 없다 */
+.growth-plant {
+  margin: auto 0;
+  padding: 16px 0;
+  text-align: center;
+}
+
+.growth-plant img {
+  display: block;
+  width: 120px;
+  height: auto;
+  margin: 0 auto 4px;
+}
+
+.growth-plant figcaption {
+  color: var(--ink-faint);
+  font-size: var(--fs-xs);
+}
+
+/* 좁은 화면(사이드바가 위로 올라감)과 낮은 창에서는 계정 영역을 밀어내지 않게 숨긴다 */
+@media (max-width: 768px), (max-height: 560px) {
+  .growth-plant {
+    display: none;
+  }
+}

@@ -1,3 +1,4 @@
+import Mascot from '../../components/Mascot'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { ApiError } from '../../api'
@@ -167,12 +168,15 @@ function SeriesDetail({ series, backTo, onSeriesChanged, onGone, onDeleted, onNe
       {loading ? (
         <p className="record-state">불러오는 중…</p>
       ) : result.items === null ? (
-        <p className="record-state record-error">
-          기록을 불러오지 못했어요.
-          <button type="button" className="btn-secondary" onClick={() => setRetry((k) => k + 1)}>
-            다시 시도
-          </button>
-        </p>
+        <>
+          <Mascot name="error-sign" size={120} />
+          <p className="record-state record-error">
+            기록을 불러오지 못했어요.
+            <button type="button" className="btn-secondary" onClick={() => setRetry((k) => k + 1)}>
+              다시 시도
+            </button>
+          </p>
+        </>
       ) : result.items.length === 0 ? (
         <p className="record-state">이 시리즈에 속한 기록이 없어요.</p>
       ) : (
@@ -326,12 +330,15 @@ function SeriesView({ seriesId, backTo, reloadSignal, onOpen, onBack }: Props) {
   if (loading) return <p className="record-state">불러오는 중…</p>
   if (result.items === null) {
     return (
-      <p className="record-state record-error">
-        시리즈를 불러오지 못했어요.
-        <button type="button" className="btn-secondary" onClick={() => setRetry((k) => k + 1)}>
-          다시 시도
-        </button>
-      </p>
+      <>
+        <Mascot name="error-sign" size={120} />
+        <p className="record-state record-error">
+          시리즈를 불러오지 못했어요.
+          <button type="button" className="btn-secondary" onClick={() => setRetry((k) => k + 1)}>
+            다시 시도
+          </button>
+        </p>
+      </>
     )
   }
 

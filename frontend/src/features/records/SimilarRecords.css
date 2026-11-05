@@ -127,3 +127,8 @@
   margin: 8px 0 0;
   text-align: right;
 }
+
+/* 비슷한 기록 제목의 전구 그림 (D-154) */
+.similar-bulb {
+  vertical-align: -4px;
+}

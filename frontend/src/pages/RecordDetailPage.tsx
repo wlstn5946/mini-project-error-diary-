@@ -1,3 +1,4 @@
+import Mascot from '../components/Mascot'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import ConfirmDialog from '../features/records/ConfirmDialog'
@@ -128,12 +129,15 @@ function RecordDetailPage() {
         ) : loading ? (
           <p className="record-state">불러오는 중…</p>
         ) : detail === 'error' ? (
-          <p className="record-state record-error">
-            기록을 불러오지 못했어요.
-            <button type="button" className="btn-secondary" onClick={() => setReloadKey((k) => k + 1)}>
-              다시 시도
-            </button>
-          </p>
+          <>
+            <Mascot name="error-sign" size={120} />
+            <p className="record-state record-error">
+              기록을 불러오지 못했어요.
+              <button type="button" className="btn-secondary" onClick={() => setReloadKey((k) => k + 1)}>
+                다시 시도
+              </button>
+            </p>
+          </>
         ) : detail ? (
           <ErrorDetail
             detail={detail}

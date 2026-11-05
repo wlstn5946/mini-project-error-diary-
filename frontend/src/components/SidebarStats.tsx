@@ -1,12 +1,11 @@
-import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router'
-import { getErrorStats, RECORDS_CHANGED_EVENT, type ErrorStats } from '../features/records/errorsApi'
+import type { ErrorStats } from '../features/records/errorsApi'
 import StaleDot from './StaleDot'
 import { matchSubView, SUB_VIEWS, type SubViewKey } from './sidebarNav'
 
 // 사이드바 "내 기록" 하위 보기 (D-146, 이전 이름 사이드바 대시보드: D-074, D-110). 전체·해결·미해결 3줄이고
 // 누르면 내 기록의 전체·해결·미해결 보기로 간다. "재사용 해결"은 목록 필터가 아니라 통계 탭 항목이라 사이드바에서 뺐다(값은 통계 탭 카드에 있다, D-129).
-// 개수는 화면을 옮길 때, 창에 다시 돌아왔을 때, 기록이 저장·삭제됐을 때 다시 불러온다. 실패하면 이전 값(없으면 "-")을 둔다.
+// 개수는 Sidebar가 `useErrorStats`로 한 번 불러와 내려 준다(식물과 같은 값, D-155). 화면을 옮길 때·창에 다시 돌아왔을 때·기록이 저장·삭제됐을 때 다시 불러오고, 실패하면 이전 값(없으면 "-")을 둔다.
 
 type Row = {
   key: SubViewKey
@@ -18,33 +17,8 @@ type Row = {
   staleCount?: number
 }
 
-function SidebarStats() {
+function SidebarStats({ stats }: { stats: ErrorStats | null }) {
   const location = useLocation()
-  const [stats, setStats] = useState<ErrorStats | null>(null)
-  const [reloadKey, setReloadKey] = useState(0)
-
-  // 기록이 저장·삭제되거나 창으로 돌아오면 다시 불러온다
-  useEffect(() => {
-    const reload = () => setReloadKey((k) => k + 1)
-    window.addEventListener(RECORDS_CHANGED_EVENT, reload)
-    window.addEventListener('focus', reload)
-    return () => {
-      window.removeEventListener(RECORDS_CHANGED_EVENT, reload)
-      window.removeEventListener('focus', reload)
-    }
-  }, [])
-
-  // 화면을 옮길 때도 다시 불러온다(주소의 필터가 바뀔 때마다 부르지 않도록 경로만 본다)
-  const pathname = location.pathname
-  useEffect(() => {
-    const controller = new AbortController()
-    getErrorStats(controller.signal)
-      .then(setStats)
-      .catch(() => {
-        // 실패해도 화면은 멈추지 않는다. 이전 값이 있으면 그대로 두고, 없으면 "-"로 보인다.
-      })
-    return () => controller.abort()
-  }, [pathname, reloadKey])
 
   const values: Record<SubViewKey, number | null> = {
     all: stats?.total ?? null,

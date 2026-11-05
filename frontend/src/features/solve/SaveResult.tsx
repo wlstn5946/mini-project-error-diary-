@@ -1,3 +1,4 @@
+import Mascot from '../../components/Mascot'
 import { useState } from 'react'
 import { keyLine } from '../../errorText'
 import type { SavedError } from '../records/errorsApi'
@@ -20,6 +21,9 @@ type Props = {
   onViewDiary: () => void
 }
 
+// "이 방법 써 보기"가 남긴 시도 문구 (D-128)
+const REUSE_ACTION = /^기존 기록 #\d+의 해결 방법 적용$/
+
 // 마지막 시도 결과에 따른 배너. 보조 문구는 해결됨만 정해져 있고 나머지는 제안한 문구다.
 const BANNERS = {
   solved: { title: '✔ 해결로 저장했어요', sub: '다음에 같은 에러가 나면 이 기록이 먼저 보여요' },
@@ -35,18 +39,14 @@ function SaveResult({ saved, feedback, feedbackStatus, onRequestFeedback, onSumm
   const labels = [...saved.tags.map((t) => t.name), ...(saved.series ? [saved.series.name] : [])]
   const last = saved.attempts[saved.attempts.length - 1]?.result ?? 'failed'
   const banner = BANNERS[last]
+  // 재사용 해결: 첫 시도가 "이 방법 써 보기"의 적용 시도이고 해결됨일 때만 원본과 연결된다 (D-128). 저장 응답에는 reused_from_id가 없어 화면이 가진 시도로 판단한다
+  const reused = saved.attempts.some((a) => a.seq === 1 && a.result === 'solved' && REUSE_ACTION.test(a.action))
 
   return (
     <section className="resolved" aria-labelledby="resolved-title">
+      {/* 해결로 저장했을 때만 캐릭터를 보여준다. 미해결에는 두지 않는다 (D-154) */}
+      {last === 'solved' && <Mascot name={reused ? 'reused-chick' : 'solved-sprout'} size={140} />}
       <div className={`resolved-banner ${last}`}>
-        {/* 해결로 저장했을 때만 보이는 장식용 체크 (읽지 않는다). 제목 문구는 그대로다 */}
-        {last === 'solved' && (
-          <span className="resolved-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 12.5l4.5 4.5L19 7.5" pathLength={1} />
-            </svg>
-          </span>
-        )}
         <h2 id="resolved-title" className="resolved-title">
           {banner.title}
         </h2>
