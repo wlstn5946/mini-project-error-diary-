@@ -74,6 +74,88 @@
   color: var(--accent);
 }
 
+/* 로그인 화면 배경 그림 (login-bg.png, 1792x877). 그림 속 로그인 카드 자리에 실제 폼 카드를 겹친다.
+   그림은 잘리지 않게 비율 그대로 화면 안에 맞춘다(contain). 화면 비율이 달라 남는 가장자리는 같은 그림을 흐리게 깔아 채우고,
+   그림 가장자리는 부드럽게 섞어 경계가 티 나지 않게 한다. 회원가입 화면은 쓰지 않는다.
+   --bgw, --bgh는 화면 안에 맞춘 그림의 실제 크기이고, 카드의 크기와 위치는 이 값에서 계산해 그림 속 카드와 맞춘다. */
+.auth-page--login {
+  --bgw: min(100vw, calc(100svh * 1792 / 877));
+  --bgh: calc(var(--bgw) * 877 / 1792);
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+  padding: 0;
+  background: #dedcf6;
+}
+
+/* 남는 가장자리를 채우는 흐린 그림 */
+.auth-page--login::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('/login-bg.png') center / cover no-repeat;
+  filter: blur(24px);
+}
+
+/* 화면 안에 맞춘 선명한 그림. 화면이 그림보다 가로로 넓으면 좌우, 세로로 길면 위아래 가장자리를 흐린 그림과 섞는다 */
+.auth-page--login::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--bgw);
+  height: var(--bgh);
+  transform: translate(-50%, -50%);
+  background: url('/login-bg.png') center / 100% 100% no-repeat;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 3%, #000 97%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 3%, #000 97%, transparent);
+}
+
+@media (min-aspect-ratio: 1792 / 877) {
+  .auth-page--login::after {
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 3%, #000 97%, transparent);
+    mask-image: linear-gradient(to right, transparent, #000 3%, #000 97%, transparent);
+  }
+}
+
+/* 그림 속 카드(가로 36.7~63.5%, 세로 22.8~77.1%)보다 살짝 크게 덮어서 그림 카드 가장자리가 비치지 않게 한다.
+   그림 가운데 = 화면 가운데이므로, 카드 위쪽은 화면 가운데에서 그림 높이의 27.6%(= 50% - 22.4%) 위다. */
+.auth-page--login .auth-card {
+  position: absolute;
+  z-index: 1;
+  top: calc(50% - var(--bgh) * 0.276);
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(var(--bgw) * 0.273);
+  max-width: none;
+  min-width: 320px;
+  min-height: calc(var(--bgh) * 0.554);
+  box-shadow: 0 8px 28px rgba(80, 70, 160, 0.14);
+}
+
+/* 768px 이하: 그림을 배경으로만 깔고 카드는 평소처럼 가운데에 둔다.
+   그림 속 카드가 실제 카드 뒤에 비치지 않게, 왼쪽 기준으로 키워서 그 카드는 화면 밖으로 보낸다. */
+@media (max-width: 768px) {
+  .auth-page--login {
+    padding: 24px 16px;
+    background: #dedcf6 url('/login-bg.png') left center / auto 125% no-repeat;
+  }
+
+  .auth-page--login::before,
+  .auth-page--login::after {
+    display: none;
+  }
+
+  .auth-page--login .auth-card {
+    position: static;
+    transform: none;
+    width: 100%;
+    max-width: 400px;
+    min-width: 0;
+    min-height: 0;
+  }
+}
+
 /* 사이드바 맨 아래: 현재 아이디와 로그아웃. 메뉴 항목이 아니다 (D-005) */
 .sidebar-account {
   display: flex;

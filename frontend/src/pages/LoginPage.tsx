@@ -39,7 +39,7 @@ function LoginPage() {
   }
 
   return (
-    <main className="auth-page">
+    <main className="auth-page auth-page--login">
       <div className="auth-card">
         <div className="auth-brand">🛠 에러 일기</div>
         <h1 className="page-title">로그인</h1>
