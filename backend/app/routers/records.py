@@ -33,6 +33,8 @@ MAX_TAG_NAME = 20  # 태그 이름과 별칭의 최대 글자 수(정규화한 �
 TAG_NAME_TOO_LONG = f"태그 이름은 {MAX_TAG_NAME}자까지 쓸 수 있어요."
 ALIAS_TOO_LONG = f"별칭은 {MAX_TAG_NAME}자까지 쓸 수 있어요."
 MIN_SIMILARITY = 60  # 유사도(%)가 이 값 이상인 기록만 비슷한 기록으로 본다. (D-040)
+# 써 보기 성공률은 이 시각 이후 시도만 센다. D-128 이전의 "이 방법 적용"은 무조건 해결됨으로 저장됐다. (D-129)
+APPLY_TRIAL_SINCE = "2026-11-05T00:00:00+09:00"
 
 
 class SeriesResponse(BaseModel):
@@ -549,6 +551,105 @@ def get_error_stats(db: Session = Depends(get_db), user: User = Depends(get_curr
         unresolved=counts["unresolved"],
         reused_resolved=errors_repo.count_reused_resolved(db, user_id=user.id),
         stale_unresolved=errors_repo.count_stale_unresolved(db, user_id=user.id),
+    )
+
+
+class RateItem(BaseModel):
+    numerator: int
+    denominator: int
+    rate: float | None  # 0~1, 분모 0이면 None
+
+
+class TopErrorRecord(BaseModel):
+    id: int
+    created_at: str
+    status: str
+
+
+class TopErrorGroup(BaseModel):
+    title: str  # 가장 최근 기록의 핵심 줄 원문
+    count: int
+    resolved: int
+    unresolved: int
+    records: list[TopErrorRecord]  # 최근순
+
+
+class TagUnresolvedItem(BaseModel):
+    id: int
+    name: str
+    total: int
+    unresolved: int
+
+
+class InsightsResponse(BaseModel):
+    resolve_rate: RateItem
+    reuse_rate: RateItem  # numerator = 재사용 해결 수, denominator = 해결 수
+    apply_success: RateItem
+    apply_since: str
+    stale_unresolved: int
+    avg_attempts_fresh: float | None
+    top_errors: list[TopErrorGroup]
+    tag_unresolved: list[TagUnresolvedItem]
+
+
+def _rate(numerator: int, denominator: int) -> RateItem:
+    return RateItem(numerator=numerator, denominator=denominator, rate=numerator / denominator if denominator else None)
+
+
+def _top_errors(db: Session, user_id: int) -> list[TopErrorGroup]:
+    """마스킹한 핵심 줄이 같은 기록끼리 묶어 건수순으로 최대 5개. 1건짜리도 포함한다. (D-129, D-117, D-122)
+
+    재사용 기록(reused_from_id)은 메시지가 달라도 원본의 묶음에 넣는다. 다시 만난 같은 에러이기 때문이다. (D-080)
+    """
+    rows = errors_repo.list_messages_for_grouping(db, user_id=user_id)  # 최근 등록순
+    keys = {row[0]: _normalize_masked(key_line(row[1])[0]) for row in rows}
+    groups: dict[str, list[tuple[int, str, str, str, int | None]]] = {}
+    for row in rows:
+        group_key = keys.get(row[4]) if row[4] is not None else None
+        group_key = group_key or keys[row[0]]
+        if group_key:
+            groups.setdefault(group_key, []).append(row)
+    ranked = sorted(groups.values(), key=lambda g: (len(g), g[0][2], g[0][0]), reverse=True)  # g[0]이 가장 최근
+    return [
+        TopErrorGroup(
+            title=key_line(g[0][1])[0].strip(),
+            count=len(g),
+            resolved=sum(1 for r in g if r[3] == "resolved"),
+            unresolved=sum(1 for r in g if r[3] != "resolved"),
+            records=[TopErrorRecord(id=r[0], created_at=r[2], status=r[3]) for r in g],
+        )
+        for g in ranked[:5]
+    ]
+
+
+# A-025 내 기록 통계 탭 (Q-006, D-129). 한 번의 요청으로 탭 전체를 그린다.
+# 고정 경로라서 A-009(/errors/{error_id})보다 위에 선언한다 (A-017과 같은 이유).
+@router.get("/errors/insights", response_model=InsightsResponse)
+def get_error_insights(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> InsightsResponse:
+    uid = user.id
+    counts = errors_repo.count_by_status(db, user_id=uid)
+    resolved = counts["resolved"]
+    reused = errors_repo.count_reused_resolved(db, user_id=uid)
+    apply_total, apply_solved = errors_repo.count_apply_attempts(db, APPLY_TRIAL_SINCE, user_id=uid)
+    avg = errors_repo.avg_attempts_fresh_resolved(db, user_id=uid)
+
+    tag_counts = errors_repo.count_errors_by_tag_and_status(db, user_id=uid)
+    tags = [
+        TagUnresolvedItem(id=t.id, name=t.name, total=tag_counts[t.id][0], unresolved=tag_counts[t.id][1])
+        for t in tags_repo.list_tags(db, user_id=uid)
+        if t.id in tag_counts
+    ]
+    tags.sort(key=lambda t: (-t.unresolved, -t.total, t.name.lower()))
+
+    return InsightsResponse(
+        resolve_rate=_rate(resolved, resolved + counts["unresolved"]),
+        reuse_rate=_rate(reused, resolved),
+        apply_success=_rate(apply_solved, apply_total),
+        apply_since=APPLY_TRIAL_SINCE,
+        stale_unresolved=errors_repo.count_stale_unresolved(db, user_id=uid),
+        avg_attempts_fresh=None if avg is None else round(avg, 1),
+        top_errors=_top_errors(db, uid),
+        tag_unresolved=tags[:8],
     )
 
 
