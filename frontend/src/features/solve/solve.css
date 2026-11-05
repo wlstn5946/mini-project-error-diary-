@@ -345,3 +345,8 @@
   font-size: 12px;
   color: var(--ink-sub);
 }
+
+/* "← 에러 입력으로 돌아가기"와 아래 에러 메시지 상자 사이 간격. 상자(.code-view)에 위 여백이 없어 붙어 보였다 (D-149) */
+.back-to-input {
+  margin-bottom: 16px;
+}

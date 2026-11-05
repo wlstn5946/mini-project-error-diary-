@@ -439,7 +439,7 @@ function SolveFlow({ retry, onLeaveRetry }: FlowProps) {
       {tab === 'analysis' && (
         <section aria-label="AI 제안·시도 기록 단계">
           {!saved && (
-            <button type="button" className="btn-secondary" disabled={saving} onClick={backToInput}>
+            <button type="button" className="btn-secondary back-to-input" disabled={saving} onClick={backToInput}>
               ← 에러 입력으로 돌아가기
             </button>
           )}
