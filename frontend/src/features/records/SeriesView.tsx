@@ -365,7 +365,7 @@ function SeriesView({ seriesId, backTo, reloadSignal, onOpen, onBack }: Props) {
     <ul className="series-cards">
       {result.items.map((s) => (
         <li key={s.id}>
-          <button type="button" className="series-card" aria-pressed={s.id === seriesId} onClick={() => onOpen(s.id)}>
+          <button type="button" className="series-card" aria-pressed={s.id === seriesId} onClick={() => (s.id === seriesId ? onBack() : onOpen(s.id))}>
             <span className="series-card-name">{s.name}</span>
             <span className="series-card-count">에러 {s.error_count}개</span>
           </button>
